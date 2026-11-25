@@ -1,4 +1,5 @@
 extends Node
+const VERSION := "1.0.4.2"
 var quick_match := false
 var ranked_match := false
 var net_roster: Array = []

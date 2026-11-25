@@ -1,6 +1,8 @@
 #include "model_loader.hpp"
+#include "textures/safe_load.hpp"
 #include "../common/jv_prof.hpp"
 #include "model_tab.hpp"
+#include "content_paths.hpp"
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,7 +43,8 @@ using namespace godot;
 namespace md = jvm::models;
 namespace sk = jvm::skins;
 
-static constexpr const char *kPackDir = "models";
+
+
 static constexpr const char *kRigScript = "res://game/character/model_rig.gd";
 static constexpr const char *kTag = "models";
 static constexpr const char *kGraftMeta = "jvm_model";
@@ -145,23 +148,39 @@ void JVModelLoader::load_packs() {
 	packs_.clear();
 	warnings_.clear();
 	selected_.reset();
-	String root = jvm::mods_dir(kPackDir);
+
+
+
+	const String root = jvm::content::packs_root();
+	const String old_root = jvm::content::legacy_models_root();
 	const bool have_root = DirAccess::dir_exists_absolute(root);
-	if (!have_root) model_state_ = "no folder " + root;
-	PackedStringArray dirs = have_root ? DirAccess::get_directories_at(root) : PackedStringArray();
-	dirs.sort();
+	const bool have_old = DirAccess::dir_exists_absolute(old_root);
+	if (!have_root && !have_old) model_state_ = "no folder " + root;
+	PackedStringArray dirs;
 	std::vector<String> full;
-	for (int i = 0; i < dirs.size(); i++) full.push_back(root.path_join(dirs[i]));
 	std::vector<sk::PackInfo> infos;
 	std::vector<Dictionary> mans;
 	std::set<std::string> installed_ids;
-	for (int i = 0; i < dirs.size(); i++) {
-		Variant v = jvm::load_json(full[i].path_join("skin.json"));
-		Dictionary d = v.get_type() == Variant::DICTIONARY ? Dictionary(v) : Dictionary();
-		infos.push_back({ S(dirs[i]), S(String(d.get("id", ""))) });
-		installed_ids.insert(S(String(d.get("id", "")).to_upper()));
-		mans.push_back(d);
-	}
+	auto scan = [&](const String &base, const String &key_prefix, bool models_only) {
+		PackedStringArray ds = DirAccess::get_directories_at(base);
+		ds.sort();
+		for (int i = 0; i < ds.size(); i++) {
+			if (ds[i].begins_with(".")) continue;
+			String dir = base.path_join(ds[i]);
+			Variant v = jvm::load_json(dir.path_join("skin.json"));
+			Dictionary d = v.get_type() == Variant::DICTIONARY ? Dictionary(v) : Dictionary();
+			if (models_only && !md::is_model_kind(S(String(d.get("kind", ""))))) continue;
+			String key = key_prefix + ds[i];
+			dirs.push_back(key);
+			full.push_back(dir);
+			infos.push_back({ S(key), S(String(d.get("id", ""))) });
+			installed_ids.insert(S(String(d.get("id", "")).to_upper()));
+			mans.push_back(d);
+		}
+	};
+	if (have_root) scan(root, "", true);
+	if (have_old) scan(old_root, have_root ? "models/" : "", false);
+	legacy_layout_ = have_old;
 
 
 	{
@@ -252,7 +271,7 @@ void JVModelLoader::load_packs() {
 	for (auto &w : reg.warnings) warnings_.push_back(w);
 	if (!settings_dirty_) load_settings();
 	for (auto &[id, p] : packs_) apply_settings(p);
-	Variant eq = jvm::load_json(root.path_join("equipped.json"));
+	Variant eq = jvm::load_json(jvm::content::model_pick_read_path());
 	std::optional<std::string> model_field;
 	std::vector<std::string> equipped;
 	if (eq.get_type() == Variant::DICTIONARY) {
@@ -310,35 +329,15 @@ bool JVModelLoader::load_template() {
 		return false;
 	};
 	if (!FileAccess::file_exists(path)) return err("file not found: " + path);
-	if (s->ext == "glb" || s->ext == "gltf") {
-		Ref<GLTFDocument> doc; doc.instantiate();
-		Ref<GLTFState> st; st.instantiate();
-		Error e = doc->append_from_file(path, st);
-		if (e != OK) return err("cannot read glTF " + path + " (error " + String::num_int64(e) + ")");
-		Node *n = doc->generate_scene(st);
-		if (!n) return err("glTF " + path + " produced no scene");
+	if (jvm::safe::pack_file(p.dir, G(s->model)).is_empty() || !jvm::safe::no_links(p.dir, path)) return err("model path " + G(s->model) + " is not a plain file inside the pack");
+	if (s->ext == "glb") {
+		String why;
+		Node *n = jvm::safe::load_glb(path, why);
+		if (!n) { jvm::safe::note_refusal("model " + path + ": " + why); return err("cannot read " + path + " (" + why + ")"); }
 		template_node_ = n;
 		if (count_meshes(n) == 0) return err("glTF " + path + " has no meshes");
 	} else {
-		if (!s->allow_scripts) {
-			PackedByteArray b = FileAccess::get_file_as_bytes(path);
-			std::string bytes(reinterpret_cast<const char *>(b.ptr()), size_t(b.size()));
-			bool has = md::bytes_have_script(bytes);
-			PackedStringArray deps = ResourceLoader::get_singleton()->get_dependencies(path);
-			for (int i = 0; i < deps.size() && !has; i++) has = md::is_script_path(S(deps[i]));
-			if (has) return err("scene " + path + " contains scripts; refused (set \"allow_scripts\": true in skin.json to run them - scripts are game code)");
-		}
-		Ref<Resource> r = ResourceLoader::get_singleton()->load(path, "PackedScene", ResourceLoader::CACHE_MODE_REPLACE_DEEP);
-		Ref<PackedScene> ps = r;
-		if (ps.is_null() || !ps->can_instantiate()) return err("cannot load scene " + path + " (bad file or missing dependency)");
-		Ref<SceneState> ss = ps->get_state();
-		int meshes = 0;
-		for (int i = 0; ss.is_valid() && i < ss->get_node_count(); i++) {
-			if (ss->get_node_type(i) == StringName("MeshInstance3D")) { meshes++; continue; }
-			for (int k = 0; k < ss->get_node_property_count(i); k++) if (ss->get_node_property_name(i, k) == StringName("mesh")) { meshes++; break; }
-		}
-		if (meshes == 0) return err("scene " + path + " has no MeshInstance3D");
-		template_scene_ = ps;
+		return err("model " + path + " is ." + G(s->ext) + "; packs are data only, so models must be a self-contained .glb");
 	}
 	{
 		Node *probe = template_scene_.is_valid() ? template_scene_->instantiate() : template_node_;
@@ -1524,6 +1523,8 @@ Dictionary JVModelLoader::get_status() const {
 	int n = 0;
 	for (auto &[id, p] : packs_) n += p.is_model ? 1 : 0;
 	s["packs"] = int64_t(n);
+	s["content_folder"] = "resources/packs";
+	s["legacy_models_folder"] = legacy_layout_;
 	if (selected_) {
 		Dictionary e;
 		e["id"] = G(sk::format_id(*selected_));
@@ -1578,7 +1579,7 @@ static String hex_of(const Color &c) { float f[4] = { c.r, c.g, c.b, 1 }; return
 
 void JVModelLoader::load_settings() {
 	settings_ = Dictionary();
-	String path = jvm::mods_dir(kPackDir).path_join(kSettingsFile);
+	String path = jvm::content::model_settings_read_path();
 	if (!FileAccess::file_exists(path)) return;
 	Variant v = jvm::load_json(path);
 	if (v.get_type() != Variant::DICTIONARY) { log_once("settings", String(kSettingsFile) + " is not a JSON object; ignored", true); return; }
@@ -1610,21 +1611,23 @@ void JVModelLoader::save_settings_now() {
 	Dictionary root;
 	root["version"] = 1;
 	root["models"] = settings_;
-	String path = jvm::mods_dir(kPackDir).path_join(kSettingsFile);
+	String path = jvm::content::model_settings_write_path();
 	if (!write_atomic(path, JSON::stringify(root, "\t"))) jvm::warn(kTag, "could not write " + path);
 }
 
 void JVModelLoader::flush_settings() { if (settings_dirty_) save_settings_now(); }
 
 bool JVModelLoader::write_equipped_model(const String &id) {
-	String path = jvm::mods_dir(kPackDir).path_join("equipped.json");
+
+
+	String path = jvm::content::equipped_path();
 	Dictionary d;
 	if (FileAccess::file_exists(path)) {
 		Variant v = jvm::load_json(path);
 		if (v.get_type() != Variant::DICTIONARY) { jvm::warn(kTag, "equipped.json is not a JSON object; model not saved (fix or delete the file)"); return false; }
 		d = v;
 	}
-	if (id.is_empty()) d.erase("model"); else d["model"] = id;
+	d["model"] = id;
 	if (!write_atomic(path, JSON::stringify(d, "\t"))) { jvm::warn(kTag, "could not write " + path); return false; }
 	jvm::log(kTag, "locker: full model set to " + (id.is_empty() ? String("none (vanilla)") : id));
 	return true;

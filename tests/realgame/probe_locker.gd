@@ -6,6 +6,14 @@ extends Node
 
 
 func p(msg: String) -> void: print("PROBE ", msg)
+
+
+func set_model_pick(id: String) -> void:
+	var path := ProjectSettings.globalize_path("res://mods/resources/packs/equipped.json")
+	var old = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	var d: Dictionary = old if old is Dictionary else {}
+	d["model"] = id
+	var f := FileAccess.open(path, FileAccess.WRITE); f.store_string(JSON.stringify(d)); f.close()
 var out_dir := ""
 func shot(name: String) -> void:
 	for i in 8: await get_tree().process_frame
@@ -38,14 +46,12 @@ func _ready() -> void:
 	var sz := OS.get_environment("JV_PROBE_SIZE").split("x")
 	var w := get_window(); w.mode = Window.MODE_WINDOWED; w.size = Vector2i(int(sz[0]), int(sz[1])); w.position = Vector2i.ZERO
 	var ml: Node = get_node_or_null("/root/JVModelLoader")
-	var root := ProjectSettings.globalize_path("res://mods/models")
 	var models := [OS.get_environment("JV_LOCKER_MODEL")]
 	if OS.get_environment("JV_LOCKER_MODEL2") != "": models.append(OS.get_environment("JV_LOCKER_MODEL2"))
 	for mi in models.size():
 		var spec: String = models[mi]
 		var id: String = spec.split(":")[0]; var label: String = spec.split(":")[1]
-		var f := FileAccess.open(root.path_join("equipped.json"), FileAccess.WRITE)
-		f.store_string(JSON.stringify({"equipped": [], "model": id})); f.close()
+		set_model_pick(id)
 		ml.call("reload_config")
 		get_node("/root/GameConfig").goto_scene("res://game/character/locker.tscn")
 		var lk: Node = null

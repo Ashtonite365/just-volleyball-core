@@ -1,8 +1,11 @@
 #include <godot_cpp/classes/time.hpp>
 #include "texture_loader.hpp"
+#include "safe_load.hpp"
+#include "gate/safe_content.hpp"
 #include "accessory_anchor.hpp"
 #include "../common/jv_prof.hpp"
 #include "models/model_loader.hpp"
+#include "models/content_paths.hpp"
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 
@@ -171,6 +174,17 @@ void JVTextureLoader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_apply_pending_env"), &JVTextureLoader::_apply_pending_env);
 	ClassDB::bind_method(D_METHOD("get_sky_status"), &JVTextureLoader::get_sky_status);
 	ClassDB::bind_method(D_METHOD("get_env_status"), &JVTextureLoader::get_env_status);
+	ClassDB::bind_method(D_METHOD("get_audio_status"), &JVTextureLoader::get_audio_status);
+	ClassDB::bind_method(D_METHOD("audio_list"), &JVTextureLoader::audio_list);
+	ClassDB::bind_method(D_METHOD("audio_buses"), &JVTextureLoader::audio_buses);
+	ClassDB::bind_method(D_METHOD("audio_info", "id"), &JVTextureLoader::audio_info);
+	ClassDB::bind_method(D_METHOD("audio_play", "id", "opts"), &JVTextureLoader::audio_play, DEFVAL(Dictionary()));
+	ClassDB::bind_method(D_METHOD("audio_play_loop", "id", "opts"), &JVTextureLoader::audio_play_loop, DEFVAL(Dictionary()));
+	ClassDB::bind_method(D_METHOD("audio_stop", "handle_or_id"), &JVTextureLoader::audio_stop);
+	ClassDB::bind_method(D_METHOD("audio_stop_all"), &JVTextureLoader::audio_stop_all);
+	ClassDB::bind_method(D_METHOD("audio_set_volume", "handle", "volume"), &JVTextureLoader::audio_set_volume);
+	ClassDB::bind_method(D_METHOD("audio_set_bus", "handle", "bus"), &JVTextureLoader::audio_set_bus);
+	ClassDB::bind_method(D_METHOD("audio_apply_pack", "stage_id"), &JVTextureLoader::audio_apply_pack);
 	ClassDB::bind_method(D_METHOD("get_cache_count"), &JVTextureLoader::get_cache_count);
 	ClassDB::bind_method(D_METHOD("get_disk_load_count"), &JVTextureLoader::get_disk_load_count);
 	ClassDB::bind_method(D_METHOD("get_apply_env_count"), &JVTextureLoader::get_apply_env_count);
@@ -205,26 +219,17 @@ Ref<Texture2D> JVTextureLoader::cache_or_load_texture(const String &full_path, b
 		if (it != tex_cache_.end() && it->second.is_valid()) return it->second;
 	}
 	Ref<Texture2D> tex;
-	if (full_path.begins_with("res://") || full_path.begins_with("user://")) {
-		ResourceLoader *rl = ResourceLoader::get_singleton();
-		if (rl && rl->exists(full_path)) tex = rl->load(full_path);
-	}
-	if (tex.is_null()) {
-		Ref<Image> img = Image::load_from_file(full_path);
+	{
+
+
+		String why;
+		Ref<Image> img = jvm::safe::load_image(full_path, why);
 		if (img.is_null()) {
-			jvm::warn("textures", "cannot read texture " + full_path);
+			jvm::safe::note_refusal("texture " + full_path + ": " + why);
 			return Ref<Texture2D>();
 		}
 		ensure_pack_mips(img);
 		tex = ImageTexture::create_from_image(img);
-	} else {
-
-
-		Ref<Image> existing = tex->get_image();
-		if (existing.is_valid() && !existing->has_mipmaps()) {
-			existing = existing->duplicate();
-			if (ensure_pack_mips(existing)) tex = ImageTexture::create_from_image(existing);
-		}
 	}
 	if (tex.is_valid()) {
 		disk_loads_++;
@@ -272,8 +277,7 @@ static void walk(const String &base, const String &rel, PackedStringArray &out) 
 }
 
 static bool is_image(const String &p) {
-	String e = p.get_extension().to_lower();
-	return e == "png" || e == "jpg" || e == "jpeg" || e == "webp" || e == "svg" || e == "tga" || e == "bmp";
+	return jvm::safe::image_ext(std::string(p.get_extension().utf8().get_data()));
 }
 
 static bool parse_color(const Variant &v, Color &out) {
@@ -333,16 +337,28 @@ static bool parse_float(const Variant &v, float &out) {
 	return false;
 }
 
-static String resolve_pack_path(const String &pack_dir, const String &rel) {
+
+
+static String resolve_pack_path(const String &pack_dir, const String &rel, bool images_only = false) {
 	if (rel.is_empty()) return "";
-	if (rel.begins_with("res://") || rel.begins_with("user://")) return rel;
-	if (rel.is_absolute_path()) return rel;
-	return pack_dir.path_join(rel);
+	String full = jvm::safe::pack_file(pack_dir, rel, images_only);
+	if (full.is_empty()) return "";
+	if (!jvm::safe::no_links(pack_dir, full)) { jvm::safe::note_refusal("'" + rel.left(120) + "' in " + pack_dir.get_file() + " goes through a symlink"); return ""; }
+	return full;
+}
+
+static String resolve_pack_glb(const String &pack_dir, const String &rel) {
+	String full = resolve_pack_path(pack_dir, rel);
+	if (full.is_empty()) return "";
+	if (full.get_extension().to_lower() != "glb") { jvm::safe::note_refusal("'" + rel.left(120) + "' in " + pack_dir.get_file() + ": meshes must be .glb"); return ""; }
+	return full;
 }
 
 Ref<Texture2D> JVTextureLoader::load_pack_texture(const String &pack_dir, const String &rel_path) {
 	if (rel_path.is_empty()) return Ref<Texture2D>();
-	return cache_or_load_texture(resolve_pack_path(pack_dir, rel_path), cache_force_);
+	String full = resolve_pack_path(pack_dir, rel_path, true);
+	if (full.is_empty()) return Ref<Texture2D>();
+	return cache_or_load_texture(full, cache_force_);
 }
 
 void JVTextureLoader::collect(const String &pack_dir, Dictionary &out) {
@@ -350,14 +366,25 @@ void JVTextureLoader::collect(const String &pack_dir, Dictionary &out) {
 	if (DirAccess::dir_exists_absolute(res_dir)) {
 		PackedStringArray files;
 		walk(res_dir, "", files);
-		for (int i = 0; i < files.size(); i++)
-			if (is_image(files[i])) out["res://" + files[i]] = res_dir.path_join(files[i]);
+		for (int i = 0; i < files.size(); i++) {
+			if (!is_image(files[i])) continue;
+			String target = "res://" + files[i];
+			if (!jvm::safe::game_texture_target(std::string(target.utf8().get_data()))) { jvm::safe::note_refusal("replacement target " + target + " in " + pack_dir.get_file() + " is not a game texture"); continue; }
+			String full = resolve_pack_path(pack_dir, String("res").path_join(files[i]), true);
+			if (!full.is_empty()) out[target] = full;
+		}
 	}
 	Variant m = jvm::load_json(pack_dir.path_join("texture_map.json"));
 	if (m.get_type() == Variant::DICTIONARY) {
 		Dictionary d = m;
 		Array k = d.keys();
-		for (int i = 0; i < k.size(); i++) out[k[i]] = pack_dir.path_join(String(d[k[i]]));
+		for (int i = 0; i < k.size(); i++) {
+			String target = String(k[i]);
+			if (!jvm::safe::game_texture_target(std::string(target.utf8().get_data()))) { jvm::safe::note_refusal("texture_map.json target '" + target.left(120) + "' in " + pack_dir.get_file() + " is not a game texture"); continue; }
+			if (d[k[i]].get_type() != Variant::STRING) continue;
+			String full = resolve_pack_path(pack_dir, String(d[k[i]]), true);
+			if (!full.is_empty()) out[target] = full;
+		}
 	}
 }
 
@@ -406,7 +433,8 @@ void JVTextureLoader::parse_skin_extensions(const String &pack_dir, const Dictio
 		Dictionary ad = man[key];
 		String rel = String(ad.get("model", ""));
 		if (rel.is_empty()) return;
-		String path = resolve_pack_path(pack_dir, rel);
+		String path = resolve_pack_glb(pack_dir, rel);
+		if (path.is_empty()) return;
 		if (!FileAccess::file_exists(path)) {
 			jvm::warn("textures", String(key) + " model missing: " + path);
 			return;
@@ -542,8 +570,8 @@ void JVTextureLoader::parse_skin_extensions(const String &pack_dir, const Dictio
 		s.env.present = true;
 		String rel = String(ed.get("mesh", ed.get("glb", ed.get("path", ""))));
 		if (!rel.is_empty()) {
-			String full = resolve_pack_path(pack_dir, rel);
-			if (full.begins_with(pack_dir)) s.env.mesh_path = full;
+			String full = resolve_pack_glb(pack_dir, rel);
+			if (!full.is_empty()) s.env.mesh_path = full;
 		}
 		s.env.name = String(ed.get("name", "env"));
 		parse_vec3(ed.get("position", ed.get("translation", Variant())), s.env.position);
@@ -574,16 +602,49 @@ void JVTextureLoader::parse_skin_extensions(const String &pack_dir, const Dictio
 				jvm::court_env::LodSpec lod;
 				String lrel = String(ld.get("mesh", ld.get("glb", "")));
 				if (lrel.is_empty()) continue;
-				String full = resolve_pack_path(pack_dir, lrel);
-				if (!full.begins_with(pack_dir)) continue;
+				String full = resolve_pack_glb(pack_dir, lrel);
+				if (full.is_empty()) continue;
 				lod.mesh_path = full;
 				parse_float(ld.get("visible_begin", ld.get("range_begin", Variant())), lod.visible_begin);
 				parse_float(ld.get("visible_end", ld.get("range", ld.get("range_end", Variant()))), lod.visible_end);
 				s.env.lods.push_back(lod);
 			}
 		}
+		Variant liv = ed.get("lights", Variant());
+		if (liv.get_type() == Variant::ARRAY) {
+			Array la = liv;
+
+			const int kMaxPackLights = 8;
+			if (la.size() > kMaxPackLights) jvm::safe::note_refusal("environment.lights in " + pack_dir.get_file() + ": " + String::num_int64(la.size()) + " lights, only the first 8 are used");
+			for (int i = 0; i < la.size() && int(s.env.lights.size()) < kMaxPackLights; i++) {
+				if (la[i].get_type() != Variant::DICTIONARY) continue;
+				Dictionary ld = la[i];
+				jvm::court_env::LightSpec L;
+				L.type = String(ld.get("type", "omni")).strip_edges().to_lower().left(16);
+				parse_vec3(ld.get("position", ld.get("pos", Variant())), L.position);
+				parse_color(ld.get("color", Variant()), L.color);
+				parse_float(ld.get("energy", Variant()), L.energy);
+				parse_float(ld.get("range", ld.get("omni_range", Variant())), L.range);
+				if (!L.position.is_finite() || !std::isfinite(L.energy) || !std::isfinite(L.range)
+						|| !std::isfinite(L.color.r) || !std::isfinite(L.color.g) || !std::isfinite(L.color.b)) {
+					jvm::safe::note_refusal("environment.lights[" + String::num_int64(i) + "] in " + pack_dir.get_file() + ": non-finite value");
+					continue;
+				}
+				L.energy = CLAMP(L.energy, 0.0f, 16.0f);
+				L.range = CLAMP(L.range, 0.0f, 100.0f);
+				L.position = L.position.clamp(Vector3(-500, -500, -500), Vector3(500, 500, 500));
+				L.color = Color(CLAMP(L.color.r, 0.0f, 4.0f), CLAMP(L.color.g, 0.0f, 4.0f), CLAMP(L.color.b, 0.0f, 4.0f), 1.0f);
+				s.env.lights.push_back(L);
+			}
+		}
 		if (s.env.mesh_path.is_empty() && s.env.lods.empty())
-			s.env.present = s.env.hide_env_props || s.env.hide_ground || s.env.hide_names.size() > 0;
+			s.env.present = s.env.hide_env_props || s.env.hide_ground || s.env.hide_names.size() > 0
+				|| s.env.lights.size() > 0;
+	}
+
+	if (man.has("audio") && man["audio"].get_type() == Variant::DICTIONARY) {
+
+		s.audio = jvm::native_audio::pack_from_dict(man["audio"]);
 	}
 
 	if (man.has("ball") && man["ball"].get_type() == Variant::DICTIONARY) {
@@ -629,6 +690,16 @@ void JVTextureLoader::load_packs(bool force_reload) {
 		infos.push_back({ S(packs[p]), S(String(d.get("id", ""))) });
 		installed_ids.insert(S(String(d.get("id", "")).to_upper()));
 		manifests.push_back(d);
+	}
+
+
+	for (int p = int(packs.size()) - 1; p >= 0; p--) {
+		if (String(manifests[p].get("kind", "")).strip_edges().to_lower() != "model") continue;
+		installed_ids.erase(S(String(manifests[p].get("id", "")).to_upper()));
+		packs.remove_at(p);
+		pack_dirs.erase(pack_dirs.begin() + p);
+		infos.erase(infos.begin() + p);
+		manifests.erase(manifests.begin() + p);
 	}
 
 
@@ -705,8 +776,8 @@ void JVTextureLoader::load_packs(bool force_reload) {
 				for (int i = 0; i < va.size(); i++) s.variants.append(String(va[i]));
 			}
 			{
-				String pp = pack_dir.path_join(s.preview_path);
-				if (FileAccess::file_exists(pp)) s.preview_tex = load_pack_texture(pack_dir, s.preview_path);
+				String pp = jvm::safe::pack_file(pack_dir, s.preview_path, true);
+				if (!pp.is_empty() && FileAccess::file_exists(pp)) s.preview_tex = load_pack_texture(pack_dir, s.preview_path);
 			}
 			skins_[id] = s;
 			load_order_.push_back(id);
@@ -764,8 +835,9 @@ void JVTextureLoader::apply_global(const Skin &s) {
 	Array keys = s.map.keys();
 	for (int i = 0; i < keys.size(); i++) {
 		String res_path = keys[i];
-		if (!rl->exists(res_path)) { jvm::warn("textures", "game has no " + res_path + " (skipped)"); continue; }
-		Ref<Texture2D> orig = rl->load(res_path);
+		if (!jvm::safe::game_texture_target(std::string(res_path.utf8().get_data()))) { jvm::safe::note_refusal("global replacement target " + res_path + " is not a game texture"); continue; }
+		if (!rl->exists(res_path, "Texture2D")) { jvm::warn("textures", "game has no " + res_path + " (skipped)"); continue; }
+		Ref<Texture2D> orig = rl->load(res_path, "Texture2D");
 		if (orig.is_null()) continue;
 		Ref<ImageTexture> repl = s.map[res_path];
 		Ref<Image> backup = orig->get_image();
@@ -1008,6 +1080,7 @@ static Node *custom_visual_on(Node *ball) {
 void JVTextureLoader::clear_scene_cosmetics() {
 	jvm::court_env::revert_env();
 	jvm::court_sky::revert_sky();
+	jvm::native_audio::clear_pack_audio();
 	for (auto it = overrides_.begin(); it != overrides_.end();) {
 		if (it->owner_peer != 0) { ++it; continue; }
 		if (MeshInstance3D *m = Object::cast_to<MeshInstance3D>(ObjectDB::get_instance(it->mesh_id)))
@@ -1421,7 +1494,7 @@ void JVTextureLoader::apply_scene_cosmetics(bool force) {
 				mark(court);
 			}
 		}
-		if ((sk.court.present || sk.sky.present || sk.env.present) && picked_stage) {
+		if ((sk.court.present || sk.sky.present || sk.env.present || sk.audio.present) && picked_stage) {
 			if (courts.empty()) {
 				Node *grass = grasses.empty() ? nullptr : grasses[0];
 				apply_picked_stage(scene, nullptr, grass, sk);
@@ -1857,7 +1930,7 @@ static jvm_anchor::Overrides anchor_overrides_for(const String &model_id) {
 	uint64_t now = Time::get_singleton() ? Time::get_singleton()->get_ticks_msec() : 0;
 	if (checked_ms == 0 || now - checked_ms > 2000) {
 		checked_ms = now ? now : 1;
-		String path = jvm::mods_dir("models").path_join("model_settings.json");
+		String path = jvm::content::model_settings_read_path();
 		uint64_t mt = FileAccess::file_exists(path) ? FileAccess::get_modified_time(path) : 0;
 		if (mt != cache_mtime) {
 			cache_mtime = mt;
@@ -1928,18 +2001,10 @@ void JVTextureLoader::apply_accessory_to(Node *player, int32_t peer, const Acces
 		}
 	}
 
-	Ref<GLTFDocument> doc;
-	doc.instantiate();
-	Ref<GLTFState> state;
-	state.instantiate();
-	Error err = doc->append_from_file(use.model_path, state, 0, use.model_path.get_base_dir());
-	if (err != OK) {
-		jvm::warn("textures", "GLTF load failed (" + String::num_int64(err) + ") for " + use.model_path);
-		return;
-	}
-	Node *gen = doc->generate_scene(state);
+	String why;
+	Node *gen = jvm::safe::load_glb(use.model_path, why);
 	if (!gen) {
-		jvm::warn("textures", "GLTF generate_scene returned null for " + use.model_path);
+		jvm::safe::note_refusal("accessory mesh " + use.model_path + ": " + why);
 		return;
 	}
 	Node3D *acc_root = Object::cast_to<Node3D>(gen);
@@ -2496,6 +2561,8 @@ Dictionary JVTextureLoader::get_status() const {
 	s["spawned"] = int64_t(spawned_nodes_.size());
 	s["picked_stage"] = picked_stage_;
 	s["picked_ball"] = picked_ball_;
+	s["security_refused"] = jvm::safe::refused_count();
+	s["security_last_refusal"] = jvm::safe::last_refusal();
 	{
 		int64_t stage_n = 0, ball_n = 0;
 		for (auto id : load_order_) {
@@ -2574,6 +2641,14 @@ Dictionary JVTextureLoader::pack_dict(sk::SkinId id, const Skin &s) const {
 	d["wrap"] = s.ball.wrap;
 	d["has_sky"] = s.sky.present;
 	d["has_environment"] = s.env.present;
+	d["has_audio"] = s.audio.present;
+	if (s.audio.present) {
+		Dictionary a;
+		a["ambience"] = String(s.audio.ambience.c_str());
+		a["bus"] = String(s.audio.bus.c_str());
+		a["volume"] = s.audio.volume;
+		d["audio"] = a;
+	}
 	d["hide_env_props"] = s.env.hide_env_props || s.sky.hide_env_props;
 	d["hide_ground"] = s.env.hide_ground || s.sky.hide_ground;
 	d["baked_lighting"] = s.env.baked_lighting;
@@ -2630,6 +2705,9 @@ void JVTextureLoader::save_picker_state() const {
 	if (f.is_null()) { jvm::warn("textures", "could not write " + path); return; }
 	f->store_string(JSON::stringify(d, "\t"));
 }
+
+
+
 
 
 
@@ -2818,7 +2896,12 @@ void JVTextureLoader::apply_picked_stage(Node *scene, Node *court, Node *grass, 
 	{ JVM_PROF("textures.stage_apply.court"); apply_court_spec(scene, court, grass, sk.court); }
 	{ JVM_PROF("textures.stage_apply.sky"); jvm::court_sky::apply_sky(scene, grass, sk.sky); }
 	{ JVM_PROF("textures.stage_apply.env"); jvm::court_env::apply_env(scene, court, grass, sk.env); }
+	{ JVM_PROF("textures.stage_apply.audio");
+		if (sk.audio.present) jvm::native_audio::apply_pack_audio(sk.audio);
+		else jvm::native_audio::clear_pack_audio();
+	}
 }
+
 
 void JVTextureLoader::clear_custom_ball_visual() {
 	for (auto it = visibility_backups_.begin(); it != visibility_backups_.end();) {
@@ -2981,4 +3064,27 @@ void JVTextureLoader::apply_picked_ball(Node *ball, const Skin &sk) {
 
 
 	jvm::warn("textures", "custom ball wrap not supported: " + wrap);
+}
+
+
+bool JVTextureLoader::audio_stop(const Variant &handle_or_id) {
+	if (handle_or_id.get_type() == Variant::INT || handle_or_id.get_type() == Variant::FLOAT)
+		return jvm::native_audio::stop_handle((int)handle_or_id);
+	String id = String(handle_or_id);
+	if (id.is_empty()) return false;
+	return jvm::native_audio::stop_named(id) > 0;
+}
+
+int JVTextureLoader::audio_apply_pack(const String &stage_id) {
+	auto pid = sk::parse_id(S(stage_id));
+	if (!pid || !skins_.count(*pid)) {
+		jvm::native_audio::clear_pack_audio();
+		return 0;
+	}
+	const Skin &sk = skins_[*pid];
+	if (!sk.audio.present) {
+		jvm::native_audio::clear_pack_audio();
+		return 0;
+	}
+	return jvm::native_audio::apply_pack_audio(sk.audio);
 }

@@ -84,6 +84,9 @@ if [ -z "${JV_PAIRS:-}" ] || [[ ",$JV_PAIRS," == *",content-share,"* ]]; then
   HOSTENV=(JV_CONTENT=1 JV_CONTENT_SRC="$CW/w/src" JV_ASSETS_BASE="http://127.0.0.1:$CP/")
   CLIENTENV=(JV_CONTENT=1 JV_ASSETS_BASE="http://127.0.0.1:$CP/")
   run_pair content-share nethost netclient
+
+  HOSTENV=(JV_CONTENT=1 JV_CONTENT_SRC="$CW/w/src" JV_ASSETS_BASE="http://127.0.0.1:$CP/" JV_MODEL_ROOT=resources/packs)
+  run_pair content-share-merged nethost netclient
   echo "mock repo requests: $(tr '\n' ' ' < "$CW/w/requests.log")"
   kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 fi

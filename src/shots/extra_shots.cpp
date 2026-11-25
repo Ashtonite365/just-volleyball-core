@@ -1028,9 +1028,10 @@ Dictionary JVExtraShots::get_spin_display() const {
 	d["on"] = spin_disp_.on; d["mode"] = spin_disp_.on ? spin_disp_.mode : spin_display_;
 	d["style"] = spin_disp_.on ? spin_disp_.style : String();
 	d["local"] = spin_disp_.local; d["shimmer"] = spin_disp_.shimmer; d["shake"] = spin_disp_.shake;
-	d["question"] = spin_disp_.question_on; d["path"] = spin_disp_.path_on;
+	d["question"] = spin_disp_.question_on; d["path"] = spin_disp_.path_on; d["box"] = spin_disp_.box_on;
 	d["exact"] = spin_disp_.exact; d["bias"] = spin_disp_.bias; d["center"] = spin_disp_.center;
 	d["question_pos"] = spin_disp_.question_pos; d["fade"] = spin_disp_.last_fade;
+	d["box_start"] = spin_disp_.box_start; d["box_end"] = spin_disp_.box_end; d["box_half_w"] = spin_disp_.box_half_w;
 	d["points"] = spin_disp_.path_points; d["seen"] = spin_disp_.seen; d["stopped"] = spin_disp_.why;
 	d["curve_display_remote"] = curve_display_remote_; d["spin_display"] = spin_display_;
 	d["question_visible"] = question_mi_ && question_mi_->is_visible();
@@ -1232,11 +1233,142 @@ void JVExtraShots::hide_game_marker(Node *ball, bool hide) {
 	}
 }
 
+void JVExtraShots::restore_remote_box_marker(Node *ball) {
+	if (!ball) return;
+	MeshInstance3D *lp = Object::cast_to<MeshInstance3D>(IO().get("ball.landing_marker", ball, "_land_predict").operator Object *());
+	if (!lp) return;
+	lp->set_scale(Vector3(1, 1, 1));
+	lp->set_rotation(Vector3());
+	for (int i = 0; i < lp->get_child_count(); i++)
+		if (Node3D *n3 = Object::cast_to<Node3D>(lp->get_child(i))) n3->show();
+}
+
+bool JVExtraShots::resolve_curve_range(Node *ball, const Vector3 &land, Vector3 &start, Vector3 &end) const {
+	start = Vector3(); end = Vector3();
+	if (last_spin_.has("path_start") && last_spin_.has("path_end") && last_spin_.has("landing")) {
+		Vector3 L = last_spin_["landing"];
+		if (Vector2(L.x - land.x, L.z - land.z).length() < 0.85) {
+			start = last_spin_["path_start"];
+			end = last_spin_["path_end"];
+			start.y = 0; end.y = 0;
+			if ((end - start).length() > 0.15) return true;
+		}
+	}
+	Variant hb = IO().get("ball.flight", ball, "hit_by");
+	if (hb.get_type() != Variant::OBJECT) hb = IO().get("ball.flight", ball, "strike_source");
+	Node *hitter = hb.get_type() == Variant::OBJECT ? Object::cast_to<Node>(hb.operator Object *()) : nullptr;
+	Vector3 aim;
+	bool have_aim = false;
+	if (hitter) {
+		Variant av = IO().get("player.input_state", hitter, "aim_point");
+		if (av.get_type() == Variant::VECTOR3) {
+			aim = av;
+			aim.y = 0;
+			have_aim = std::hypot(double(aim.x), double(aim.z)) > 0.2;
+		}
+	}
+	if (!have_aim) {
+
+
+		Node3D *b3 = Object::cast_to<Node3D>(ball);
+		Vector3 vel = IO().get("ball.flight", ball, "vel");
+		Vector3 flat(vel.x, 0, vel.z);
+		Vector3 along = flat.length() > 0.2 ? flat.normalized() : Vector3(0, 0, (b3 && b3->get_global_position().z > 0 ? -1.0 : 1.0));
+		Vector3 right = Vector3(0, 1, 0).cross(along);
+		if (right.length() < 0.05) right = Vector3(1, 0, 0);
+		right.normalize();
+		if (double(IO().get("ball.flight", ball, "curve")) < 0.0) right = -right;
+		const double span = std::fmax(spin_.max_lateral, 1.0);
+		start = Vector3(land.x - right.x * (span * 0.5), 0, land.z - right.z * (span * 0.5));
+		end = Vector3(land.x + right.x * (span * 0.5), 0, land.z + right.z * (span * 0.5));
+		return (end - start).length() > 0.15;
+	}
+	Node3D *b3 = Object::cast_to<Node3D>(ball);
+	Vector3 from = b3 ? b3->get_global_position() : aim;
+	jvm::shots::Vec3 fwd{ aim.x - from.x, 0, aim.z - from.z };
+	if (std::hypot(fwd.x, fwd.z) < 0.3) fwd = { 0, 0, (from.z > 0 ? -1.0 : 1.0) };
+	Vector3 vel = IO().get("ball.flight", ball, "vel");
+	Vector3 flat(vel.x, 0, vel.z);
+	Vector3 right = Vector3(0, 1, 0).cross(flat.length() > 0.2 ? flat : Vector3(fwd.x, 0, fwd.z));
+	if (right.length() < 0.05) right = Vector3(-fwd.z, 0, fwd.x);
+	right.y = 0;
+	if (right.length() > 0.01) right.normalize();
+	jvm::shots::Court court;
+	if (IO().get("ball.flight", ball, "court_half_w").get_type() != Variant::NIL) {
+		court.center_x = double(IO().get("ball.flight", ball, "court_center_x"));
+		court.half_w = std::fmax(1.0, double(IO().get("ball.flight", ball, "court_half_w")));
+		court.half_l = std::fmax(2.0, double(IO().get("ball.flight", ball, "court_half_l")));
+	}
+	auto dist_seg = [&](const jvm::shots::Vec3 &e) {
+		Vector3 a(aim.x, 0, aim.z), b(e.x, 0, e.z);
+		Vector3 ab = b - a;
+		double t = ab.length_squared() < 1e-6 ? 0.0 : CLAMP(double((land - a).dot(ab) / ab.length_squared()), 0.0, 1.0);
+		return (a + ab * t - land).length();
+	};
+	jvm::shots::Vec3 dir{ right.x, 0, right.z };
+	jvm::shots::SpinPath p1 = jvm::shots::spin_path({ aim.x, 0, aim.z }, fwd, dir, 1.0, spin_, court);
+	jvm::shots::SpinPath p2 = jvm::shots::spin_path({ aim.x, 0, aim.z }, fwd, { -dir.x, 0, -dir.z }, 1.0, spin_, court);
+	jvm::shots::Vec3 e1 = p1.at(1.0), e2 = p2.at(1.0);
+	start = aim;
+	end = dist_seg(e1) <= dist_seg(e2) ? Vector3(e1.x, 0, e1.z) : Vector3(e2.x, 0, e2.z);
+	return (end - start).length() > 0.15;
+}
+
+void JVExtraShots::drive_remote_uncertainty_box(Node *ball, const Vector3 &start, const Vector3 &end, double fade, const Color &col) {
+	MeshInstance3D *lp = Object::cast_to<MeshInstance3D>(IO().get("ball.landing_marker", ball, "_land_predict").operator Object *());
+	if (!lp) return;
+	auto K = [&](const char *k, double def) -> double {
+		Ref<Script> sc = ball->get_script();
+		if (sc.is_valid()) { Dictionary m = sc->get_script_constant_map(); if (m.has(k)) return double(m[k]); }
+		return def;
+	};
+
+
+
+
+
+	const double spread = K("SPREAD_FAR", 1.15);
+	spin_disp_.box_half_w = spread / std::sqrt(2.0);
+	if (ball->has_method("_shard_cluster_mesh")) {
+		lp->set_mesh(IO().call("ball.landing_marker", ball, "_shard_cluster_mesh", 0.22, spread));
+		if (MeshInstance3D *shell = Object::cast_to<MeshInstance3D>(IO().get("ball.landing_marker", ball, "_land_shell").operator Object *()))
+			shell->set_mesh(IO().call("ball.landing_marker", ball, "_shard_cluster_mesh", 0.0, spread));
+	}
+
+
+	for (int i = 0; i < lp->get_child_count(); i++)
+		if (Node3D *n3 = Object::cast_to<Node3D>(lp->get_child(i))) n3->set_visible(i == 0);
+	Vector3 a(start.x, 0, start.z), b(end.x, 0, end.z);
+	Vector3 mid((a.x + b.x) * 0.5, 0.045, (a.z + b.z) * 0.5);
+	Vector3 along = b - a;
+	double len = along.length();
+	if (len < 0.2) { along = Vector3(0, 0, 1); len = 0.2; }
+	along /= len;
+	Vector3 across = Vector3(0, 1, 0).cross(along);
+	if (across.length() < 0.01) across = Vector3(1, 0, 0);
+	across.normalize();
+	Basis basis;
+	basis.set_column(0, across);
+	basis.set_column(1, Vector3(0, 1, 0));
+	basis.set_column(2, along);
+	const double half = spin_disp_.box_half_w > 0.1 ? spin_disp_.box_half_w : (spread / std::sqrt(2.0));
+	Transform3D xf(basis, mid);
+	xf.basis = xf.basis.scaled(Vector3(1.0, 1.0, (len * 0.5) / half));
+	lp->set_global_transform(xf);
+	lp->show();
+	if (StandardMaterial3D *pm = Object::cast_to<StandardMaterial3D>(lp->get_material_override().ptr()))
+		pm->set_albedo(Color(col.r, col.g, col.b, col.a));
+	if (ball->has_method("_land_tint"))
+		IO().call("ball.landing_marker", ball, "_land_tint", col, fade);
+}
+
 void JVExtraShots::clear_spin_display(const String &why) {
 	if (!why.is_empty()) spin_disp_.why = why;
+	restore_remote_box_marker(Object::cast_to<Node>(ObjectDB::get_instance(spin_disp_.ball)));
 	spin_disp_.on = false;
 	spin_disp_.question_on = false;
 	spin_disp_.path_on = false;
+	spin_disp_.box_on = false;
 	spin_disp_.path_points = Array();
 	auto drop = [](Node *n) {
 		if (!n) return;
@@ -1281,13 +1413,15 @@ void JVExtraShots::update_spin_display(double delta) {
 	}
 	spin_disp_.seen += delta;
 	spin_disp_.local = is_local_hitter(active);
-	spin_disp_.style = spin_disp_.local ? String("full") : curve_display_remote_;
+
+
+	spin_disp_.style = (curve_display_remote_ == "off") ? String("off") : String("full");
 	spin_disp_.mode = spin_display_;
-	spin_disp_.shimmer = spin_disp_.style == "full";
-	spin_disp_.shake = spin_disp_.style == "full";
+	spin_disp_.shimmer = true;
+	spin_disp_.shake = true;
 
 	Vector3 land;
-	PackedVector3Array raw = sample_ground_path(active, &land);
+	sample_ground_path(active, &land);
 	if (active->has_method("_predict_land_curved")) {
 		Vector3 pred = IO().call("ball.solver", active, "_predict_land_curved");
 		if (std::isfinite(pred.x) && std::isfinite(pred.z)) land = Vector3(pred.x, 0, pred.z);
@@ -1299,21 +1433,12 @@ void JVExtraShots::update_spin_display(double delta) {
 		Vector3 vel = IO().get("ball.flight", active, "vel");
 		jitter = IO().call("ball.float", active, "float_offset", spin_disp_.fseed, spin_disp_.seen, vel);
 		jitter.y = 0.0;
-
-		if ((spin_disp_.bias + jitter).length() < 0.25) jitter = Vector3();
 	}
-	spin_disp_.center = Vector3(land.x + spin_disp_.bias.x + jitter.x, 0.04, land.z + spin_disp_.bias.z + jitter.z);
 
-	Array pts;
-	PackedVector3Array drawn;
-	const Vector3 off = spin_disp_.center - Vector3(land.x, 0.04, land.z);
-	for (int i = 0; i < raw.size(); i++) {
-		Vector3 q(raw[i].x + off.x, 0.04, raw[i].z + off.z);
-		pts.push_back(q);
-		drawn.push_back(q);
-	}
-	spin_disp_.path_points = pts;
-	spin_disp_.question_pos = drawn.is_empty() ? spin_disp_.center : drawn[drawn.size() - 1];
+	jitter *= 0.35;
+	spin_disp_.center = Vector3(land.x + jitter.x, 0.04, land.z + jitter.z);
+	spin_disp_.question_pos = spin_disp_.center;
+	spin_disp_.path_points = Array();
 
 
 	auto K = [&](const char *k, double def) -> double {
@@ -1332,44 +1457,53 @@ void JVExtraShots::update_spin_display(double delta) {
 	const double gone = Math::smoothstep(Math::lerp(from_still, from, 0.8), Math::lerp(gone_still, gone_full, 0.8), done);
 	const double shimmer = spin_disp_.shimmer ? (0.82 + 0.18 * std::sin(now() * 11.0)) : 1.0;
 	double fade = Math::lerp(0.9, 0.03, gone) * (spin_disp_.shimmer ? shimmer : 0.85);
-	Color col = Color(0.35, 0.95, 1.0, 0.9);
-	if (spin_disp_.style != "full") {
-		const double g = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
-		col = Color(g, g, g, 0.40);
-		fade *= 0.75;
-	}
 	spin_disp_.last_fade = fade;
-	col.a *= fade;
 
 	const bool question = spin_disp_.mode == "question";
 	const bool show = spin_disp_.style != "off" && fade > 0.02;
-	spin_disp_.path_on = show;
+	spin_disp_.path_on = false;
 	spin_disp_.question_on = show && question;
+	spin_disp_.box_on = show;
+	if (path_mi_) path_mi_->hide();
 
-	if (question || spin_disp_.style == "off") hide_game_marker(active, true);
 	if (!show) {
-		if (path_mi_) path_mi_->hide();
+		restore_remote_box_marker(active);
+		hide_game_marker(active, true);
 		if (question_mi_) question_mi_->hide();
 		if (question_lbl_) question_lbl_->hide();
+		spin_disp_.box_on = false;
 		return;
+	}
+
+
+
+	Vector3 b0 = spin_disp_.box_start, b1 = spin_disp_.box_end;
+	const bool frozen = (b1 - b0).length() > 0.15;
+	if (!frozen) {
+		if (resolve_curve_range(active, land, b0, b1)) {
+			spin_disp_.box_start = b0;
+			spin_disp_.box_end = b1;
+		} else {
+			spin_disp_.box_on = false;
+			hide_game_marker(active, true);
+			b0 = b1 = Vector3();
+		}
+	}
+	if ((b1 - b0).length() > 0.15) {
+		Color box_col = Color(0.4, 1.0, 1.0, 0.92 * fade);
+		drive_remote_uncertainty_box(active, b0, b1, fade, box_col);
+	} else {
+		spin_disp_.box_on = false;
+		hide_game_marker(active, true);
 	}
 	if (question) {
 		ensure_display_nodes(active);
-		if (path_mat_.is_valid()) path_mat_->set_albedo(col);
-		if (question_mat_.is_valid()) {
-			Color qcol = spin_disp_.style == "full" ? Color(1, 1, 1, 0.38 * fade) : Color(0.7, 0.7, 0.7, 0.22 * fade);
-			question_mat_->set_albedo(qcol);
-			if (question_lbl_) question_lbl_->set_modulate(qcol);
-		}
-		if (path_mi_) {
-			path_mi_->set_mesh(make_path_mesh(drawn, spin_disp_.question_pos));
-			path_mi_->set_global_position(spin_disp_.question_pos);
-			path_mi_->show();
-		}
+		Color qcol = Color(0.4, 1.0, 1.0, 0.70 * fade);
+		if (question_mat_.is_valid()) question_mat_->set_albedo(qcol);
+		if (question_lbl_) question_lbl_->set_modulate(qcol);
 		if (question_mi_) { question_mi_->set_global_position(spin_disp_.question_pos); question_mi_->show(); }
 		if (question_lbl_) { question_lbl_->set_global_position(spin_disp_.question_pos + Vector3(0, 0.25, 0)); question_lbl_->show(); }
 	} else {
-		if (path_mi_) path_mi_->hide();
 		if (question_mi_) question_mi_->hide();
 		if (question_lbl_) question_lbl_->hide();
 	}
@@ -1383,6 +1517,8 @@ void JVExtraShots::update_spin_display(double delta) {
 
 
 void JVExtraShots::update_range_box(double delta) {
+
+	if (spin_disp_.on) return;
 	if (!box_.on) { restore_marker(); return; }
 	Node3D *b = Object::cast_to<Node3D>(ObjectDB::get_instance(box_.ball));
 	if (!b) { box_.on = false; box_.why = "ball gone"; return; }

@@ -77,7 +77,7 @@ full live table.
 
 Gate rules (rules.md): **Free Play / offline: everything. LAN / private / friends-only: full (gameplay + sync). Public / quick match / server browser: local-only (read, local_ui, cosmetic).** `gate_matrix()` returns the exact table.
 
-## Contents (207 functions, 3 signals, 86 capabilities)
+## Contents (250 functions, 3 signals, 88 capabilities)
 
 - [API info, registration, gate](#api-info-registration-gate) (18)
 - [Config and state](#config-and-state) (9)
@@ -89,6 +89,7 @@ Gate rules (rules.md): **Free Play / offline: everything. LAN / private / friend
 - [Engine, overrides, generic escape hatch](#engine-overrides-generic-escape-hatch) (10)
 - [Packs, textures, stage / ball picks](#packs-textures-stage--ball-picks) (14)
 - [Courts: environment and sky](#courts-environment-and-sky) (4)
+- [Native audio (1.4)](#native-audio-14) (11)
 - [Accessories and player models](#accessories-and-player-models) (15)
 - [Unified loader](#unified-loader) (6)
 - [Goofy ball (all 156 params)](#goofy-ball-all-156-params) (19)
@@ -108,9 +109,9 @@ Call these first. `register_mod` is required before any call that names a mod.
 ### `get_api_version()` → String
 
 - **Since** 1.0 · no capability needed (API metadata)
-- **Does / side effects:** API version `major.minor.patch` (now `1.3.0`). No side effects.
+- **Does / side effects:** API version `major.minor.patch` (now `1.4.0`). No side effects.
 - **Multiplayer:** Safe everywhere (no game state touched).
-- **Example:** `api.get_api_version()  # "1.3.0"`
+- **Example:** `api.get_api_version()  # "1.4.0"`
 
 ### `register_mod(name: String, version: String, caps: PackedStringArray)` → Dictionary {ok, reason, granted, denied}
 
@@ -805,6 +806,87 @@ Translation to the unified loader's texture subsystem.
 - **Does / side effects:** Picks the court and applies it now: floor/net look + environment GLB (clearance-checked) + sky.
 - **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
 - **Example:** `api.court_env_load("my_mod", "10E1")`
+
+## Native audio (1.4)
+
+Lazy access to the game's own sound effects and ambience tracks through the unified loader. Enumeration is a cheap index of `res://` paths (`res://game/sfx`, `res://game/ost`); a stream is loaded and a player/host node is created only on the first play request, then freed when unused. Playback is routed through the game's existing Master / sfx / music / ambient / crowd / announcer buses so the user's volume settings apply. Stage packs may declare `audio: { ambience, bus, volume }` in `skin.json`; no shipped pack uses it yet.
+
+### `audio_list(mod: String)` → Array[Dictionary] {id, path, category, bus}
+
+- **Since** 1.4 · **capability** `audio.query` · **access** `read` · **scope** this PC only
+- **Does / side effects:** Native sounds as a path index only. Does not load streams or create players/nodes.
+- **Multiplayer:** Safe everywhere (read-only, this PC). Open once the game version pin matched, also in public lobbies.
+- **Example:** `api.audio_list("my_mod").size()`
+
+### `audio_buses(mod: String)` → PackedStringArray
+
+- **Since** 1.4 · **capability** `audio.query` · **access** `read` · **scope** this PC only
+- **Does / side effects:** Live AudioServer bus names (Master, sfx, music, ambient, ...). Cheap; does not start playback.
+- **Multiplayer:** Safe everywhere (read-only, this PC). Open once the game version pin matched, also in public lobbies.
+- **Example:** `api.audio_buses("my_mod")`
+
+### `audio_info(mod: String, id: String)` → Dictionary {found, id, path, category, bus}
+
+- **Since** 1.4 · **capability** `audio.query` · **access** `read` · **scope** this PC only
+- **Does / side effects:** Resolve a native sound by short id, alias (`beach`) or `res://` path. Builds the path index if needed; does not load the stream.
+- **Multiplayer:** Safe everywhere (read-only, this PC). Open once the game version pin matched, also in public lobbies.
+- **Example:** `api.audio_info("my_mod", "beach")`
+
+### `audio_status(mod: String)` → Dictionary {started, index_built, index_count, cached_streams, players, nodes, idle, ...}
+
+- **Since** 1.4 · **capability** `audio.query` · **access** `read` · **scope** this PC only
+- **Does / side effects:** Idle means started=false and no players, host node or cached streams. Listing sounds does not leave idle.
+- **Multiplayer:** Safe everywhere (read-only, this PC). Open once the game version pin matched, also in public lobbies.
+- **Example:** `api.audio_status("my_mod").idle`
+
+### `audio_play(mod: String, id: String, opts: Dictionary = {})` → int (handle, 0 = fail)
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Play a native one-shot. opts: volume (linear), bus, position (Vector3, optional 3D). Creates the host node and loads the stream on first use.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_play("my_mod", "announcer/ace")`
+
+### `audio_play_loop(mod: String, id: String, opts: Dictionary = {})` → int (handle, 0 = fail)
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Play a native sound looped (ambience). Same opts as audio_play. The beach ambience id is `beach` / `ambiance/717146__ghosttropic__short-sand-beach-waves-3`.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_play_loop("my_mod", "beach", {"bus": "ambient"})`
+
+### `audio_stop(mod: String, handle_or_id: Variant)` → bool
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Stop a handle (int) or every voice of a sound id (String). Frees the stream when unused; frees the host node when nothing is playing.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_stop("my_mod", h)`
+
+### `audio_stop_all(mod: String)` → bool
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Stop every voice started through this API and return to the idle (zero-cost) state.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_stop_all("my_mod")`
+
+### `audio_set_volume(mod: String, handle: int, volume: float)` → bool
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Per-voice linear gain (the bus still follows the game's Master/sfx/music/ambient volume).
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_set_volume("my_mod", h, 0.5)`
+
+### `audio_set_bus(mod: String, handle: int, bus: String)` → bool
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Move a voice to a game bus (ambient, sfx, music, crowd, announcer, Master, feedback). Unknown names fall back.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_set_bus("my_mod", h, "ambient")`
+
+### `audio_apply_pack(mod: String, stage_id: String)` → int (handle, 0 = none)
+
+- **Since** 1.4 · **capability** `audio.play` · **access** `cosmetic` · **scope** this PC only
+- **Does / side effects:** Apply a stage pack's audio{} block (looped ambience). No-op when the pack has no audio{}.
+- **Multiplayer:** Local visuals only (other players never see or receive it). Open in every identified mode incl. public / quick match; closed on an unknown context.
+- **Example:** `api.audio_apply_pack("my_mod", "10F8")`
 
 ## Accessories and player models
 
@@ -1884,6 +1966,7 @@ JVModAPI exposes no settable properties: every state change goes through a check
 | `user://jv_profiler/` | folder | - | Profiler captures (`capture-<time>-<n>[-tag].json` + `.csv`) and `debug-dump-<time>.json`. |
 | `mods/core/00-default.json` `menu_perf` | bool | true | Menu perf default (cheaper menu motion, same look). `menu_perf_set` changes it for the session. |
 | `mods/<category>/*.json` | JSON | per library | Library configs (shots, goofy, textures ...), read by `load_config` / `library_reload`, validated by `config_validate`. |
+| stage pack `skin.json` `audio{}` | JSON | - | Optional native ambience for a court (`ambience` = native id/path/alias such as `beach`, plus optional `bus` / `volume`). Parsed only; the stream is loaded when the pack is applied. See docs/PICKERS.md. |
 | stage pack `skin.json` `environment{}` / `sky{}` / `court{}` / `goofy{}` | JSON | - | Court environment GLB, distant sky, court look and the map's goofy block (see docs/PICKERS.md, docs/UNIFIED-LOADER.md). Read via `court_env_info`, `loader_map_goofy_block`. |
 
 ## Capabilities
@@ -1951,6 +2034,8 @@ JVModAPI exposes no settable properties: every state change goes through a check
 | `ball.pick` | 1.1 | cosmetic | local | impl | Pick a custom ball (ball pack) |
 | `court.query` | 1.1 | read | local | impl | Court environment (environment{} GLB around the court) and distant sky (sky{}) status and a pack's blocks |
 | `court.env` | 1.1 | cosmetic | local | impl | Load a court with its environment GLB + sky (pick + apply; clearance-checked by the loader) |
+| `audio.query` | 1.4 | read | local | impl | List the game's native sound effects and ambience tracks (cheap path index only; no streams, players or nodes until something plays) and the live audio buses |
+| `audio.play` | 1.4 | cosmetic | local | impl | Play or loop a native game sound, stop it, and set per-voice volume or bus; playback uses the game's Master/sfx/music/ambient/crowd/announcer buses and is created only on request |
 | `accessories.query` | 1.1 | read | local | impl | Locker accessories from packs (Head / Face / Extra), what is worn, unplaced ids |
 | `models.query` | 1.1 | read | local | impl | Custom player models: list, saved pick, shown model, preview state, per-model settings, rig report |
 | `loader.query` | 1.1 | read | local | impl | Unified loader: status, goofy bridge, loader maps, a map's goofy block |
@@ -1977,7 +2062,7 @@ JVModAPI exposes no settable properties: every state change goes through a check
 | `dev.debugger` | 1.3 | local_ui | local | impl | CORE debugger (off by default): per-library log levels, capability / library status dump, inspect our own nodes, event trace, in-game console |
 | `player.consts_check` | 1.3 | read | local | impl | Altered-player-script checker for the player.consts bypass: flags writes to names still const, out of clamp / type, never-change names, non-host writes in synced lobbies, writes while unavailable, any mid-match write (values frozen for the match), client values differing from the host's start-of-match set, and folded copies in other scripts |
 
-Coverage: 86 capabilities, 72 implemented, 13 mapped (reachable through `game.generic`, documented with file:line), 1 planned. Mapped ones are listed in docs/API.md's migration checklist.
+Coverage: 88 capabilities, 74 implemented, 13 mapped (reachable through `game.generic`, documented with file:line), 1 planned. Mapped ones are listed in docs/API.md's migration checklist.
 
 ## Script mods and the example
 

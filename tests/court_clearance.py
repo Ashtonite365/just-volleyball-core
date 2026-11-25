@@ -42,6 +42,12 @@ DOME_THETA = 1.02
 MIN_MARGIN = 0.75
 COVER_PAST = 0.50
 FLOOR_Y_MIN, FLOOR_Y_MAX = -0.50, 0.25
+
+
+
+
+STOCK_FLOOR_Y = 0.0
+ENV_GROUND_TOP_MAX = 0.0
 FORCE_WALL_H = PLAY_BOX[1]
 
 
@@ -49,6 +55,9 @@ KIT_FLOOR = {
     "grass": {"half_x": 58.8, "half_z": 58.8, "name": "EnvFloor 117.6x117.6", "y": -0.12},
     "beach": {"half_x": 58.8, "half_z": 58.8, "name": "EnvFloor 117.6x117.6", "y": -0.12},
     "school": {"half_x": 36.57, "half_z": 37.95, "name": "gym floor walls_001 ±36.57x±37.95", "y": 0.0},
+
+    "tutorial": {"half_x": 16.0, "half_z": 26.5, "name": "tutorial CourtFloor (stock court)", "y": 0.0},
+    "void": {"half_x": 16.0, "half_z": 26.5, "name": "void CourtFloor (stock court)", "y": 0.0},
 }
 
 
@@ -468,6 +477,7 @@ def audit_pack(pack_dir: Path) -> dict:
     issues = []
     min_margin = math.inf
     floor_spans = []
+    ground_heights = []
 
     if not hide_ground and base in KIT_FLOOR:
         kf = KIT_FLOOR[base]
@@ -538,6 +548,35 @@ def audit_pack(pack_dir: Path) -> dict:
             if len(inside):
                 iymax = float(inside[:, 1].max())
                 iymin = float(inside[:, 1].min())
+                zpos = inside[inside[:, 2] >= 0]
+                zneg = inside[inside[:, 2] < 0]
+                zpos_top = float(zpos[:, 1].max()) if len(zpos) else None
+                zneg_top = float(zneg[:, 1].max()) if len(zneg) else None
+                floor_spans[-1] = floor_spans[-1] + (zpos_top, zneg_top)
+                ground_heights.append({
+                    "label": str(label),
+                    "stock_floor_y": STOCK_FLOOR_Y,
+                    "court_top_y": iymax,
+                    "court_top_y_zpos": zpos_top,
+                    "court_top_y_zneg": zneg_top,
+                    "delta_vs_stock": iymax - STOCK_FLOOR_Y,
+                    "ok": iymax <= ENV_GROUND_TOP_MAX + 1e-4
+                        and (zpos_top is None or zpos_top <= ENV_GROUND_TOP_MAX + 1e-4)
+                        and (zneg_top is None or zneg_top <= ENV_GROUND_TOP_MAX + 1e-4),
+                })
+
+                if iymax > ENV_GROUND_TOP_MAX + 1e-4:
+                    issues.append(
+                        f"{label}: env ground top y={iymax:.4f} is above stock floor "
+                        f"Y={STOCK_FLOOR_Y:.3f} (max {ENV_GROUND_TOP_MAX:.3f}); "
+                        f"this buries the landing indicator"
+                    )
+                for half, top in (("z>=0", zpos_top), ("z<0", zneg_top)):
+                    if top is not None and top > ENV_GROUND_TOP_MAX + 1e-4:
+                        issues.append(
+                            f"{label}: env ground top in {half} half y={top:.4f} is above "
+                            f"stock floor Y={STOCK_FLOOR_Y:.3f}"
+                        )
                 if iymax > FLOOR_Y_MAX + 0.05:
                     issues.append(
                         f"{label}: visible floor in the playable+past area rises to y={iymax:.2f} "
@@ -598,6 +637,8 @@ def audit_pack(pack_dir: Path) -> dict:
         "what": "; ".join(issues) if issues else "none",
         "min_barrier_margin": margin_out,
         "floor_coverage": coverage_str,
+        "stock_floor_y": STOCK_FLOOR_Y,
+        "ground_heights": ground_heights,
         "issues": issues,
     }
 
@@ -624,8 +665,9 @@ def self_check() -> int:
     expect(covers_playable(36.57, 37.95), "school gym floor covers")
     expect(not covers_playable(15.5, 26.0), "exact barrier AABB is not past enough")
     expect(covers_playable(16.0, 26.5), "barrier+0.5 covers")
+    expect("tutorial" in KIT_FLOOR and "void" in KIT_FLOOR, "tutorial/void in KIT_FLOOR")
+    expect(ENV_GROUND_TOP_MAX <= STOCK_FLOOR_Y, "env ground top must be at or below stock floor")
     return fails
-
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Audit court packs against the force wall + floor coverage")
@@ -646,6 +688,16 @@ def main(argv=None) -> int:
             f"{r['id'] or r['folder']}: {flag}  margin={r['min_barrier_margin']}  "
             f"floor={r['floor_coverage']}  {r['what']}"
         )
+        for gh in r.get("ground_heights") or []:
+            zp = gh.get("court_top_y_zpos")
+            zn = gh.get("court_top_y_zneg")
+            def fmt(v):
+                return "n/a" if v is None else f"{v:.4f}"
+            print(
+                f"  ground {gh['label']}: top={gh['court_top_y']:.4f}  "
+                f"z+={fmt(zp)}  z-={fmt(zn)}  stock_floor_y={gh['stock_floor_y']:.3f}  "
+                f"delta={gh['delta_vs_stock']:+.4f}  {'OK' if gh['ok'] else 'HIGH'}"
+            )
         if r["violated"] and not args.expect_fail:
             rc = 1
         if (not r["violated"]) and args.expect_fail:

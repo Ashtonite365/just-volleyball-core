@@ -394,7 +394,7 @@ Dictionary JVModAPI::court_env_info(const String &mod, const String &stage_id) {
 	Node *t = lib("textures");
 	Dictionary info = t && t->has_method("pack_info") ? D(t->call("pack_info", stage_id)) : Dictionary();
 	d["found"] = !info.is_empty();
-	static const char *keys[] = { "environment", "sky", "court", "base_stage", "label", "name", "has_environment", "has_sky" };
+	static const char *keys[] = { "environment", "sky", "court", "base_stage", "label", "name", "has_environment", "has_sky", "has_audio", "audio" };
 	for (const char *k : keys) if (info.has(k)) d[k] = info[k];
 	if (!d.has("has_environment")) d["has_environment"] = info.has("environment");
 	if (!d.has("has_sky")) d["has_sky"] = info.has("sky");
@@ -406,6 +406,23 @@ bool JVModAPI::court_env_load(const String &mod, const String &stage_id) {
 	Node *t = lib("textures");
 	return call_ok(t, "set_picked_stage", args(stage_id)) && call_ok(t, "apply_picked_cosmetics", args());
 }
+
+
+Array JVModAPI::audio_list(const String &mod) { return AR(fwd(mod, "audio.query", "textures", "audio_list", args(), Array())); }
+PackedStringArray JVModAPI::audio_buses(const String &mod) {
+	Variant v = fwd(mod, "audio.query", "textures", "audio_buses", args(), PackedStringArray());
+	return v.get_type() == Variant::PACKED_STRING_ARRAY ? PackedStringArray(v) : PackedStringArray();
+}
+Dictionary JVModAPI::audio_info(const String &mod, const String &id) { return D(fwd(mod, "audio.query", "textures", "audio_info", args(id), Dictionary())); }
+Dictionary JVModAPI::audio_status(const String &mod) { return D(fwd(mod, "audio.query", "textures", "get_audio_status", args(), Dictionary())); }
+int64_t JVModAPI::audio_play(const String &mod, const String &id, const Dictionary &opts) { return int64_t(fwd(mod, "audio.play", "textures", "audio_play", args(id, opts), 0)); }
+int64_t JVModAPI::audio_play_loop(const String &mod, const String &id, const Dictionary &opts) { return int64_t(fwd(mod, "audio.play", "textures", "audio_play_loop", args(id, opts), 0)); }
+bool JVModAPI::audio_stop(const String &mod, const Variant &handle_or_id) { return B(fwd(mod, "audio.play", "textures", "audio_stop", args(handle_or_id), false)); }
+bool JVModAPI::audio_stop_all(const String &mod) { return use(mod, "audio.play") && (fwd(mod, "audio.play", "textures", "audio_stop_all", args()), true); }
+bool JVModAPI::audio_set_volume(const String &mod, int64_t handle, double volume) { return B(fwd(mod, "audio.play", "textures", "audio_set_volume", args(handle, volume), false)); }
+bool JVModAPI::audio_set_bus(const String &mod, int64_t handle, const String &bus) { return B(fwd(mod, "audio.play", "textures", "audio_set_bus", args(handle, bus), false)); }
+int64_t JVModAPI::audio_apply_pack(const String &mod, const String &stage_id) { return int64_t(fwd(mod, "audio.play", "textures", "audio_apply_pack", args(stage_id), 0)); }
+
 Dictionary JVModAPI::accessories_status(const String &mod) { return D(fwd(mod, "accessories.query", "textures", "get_accessory_status", args(), Dictionary())); }
 Array JVModAPI::accessories_list(const String &mod, const String &category) {
 	Array out;
@@ -811,6 +828,12 @@ void JVModAPI::bind_core_methods() {
 	BM(stage_get_picked, "mod"); BM(stage_set_picked, "mod", "id"); BM(ball_get_picked, "mod"); BM(ball_set_picked, "mod", "id"); BM(cosmetics_apply, "mod");
 	BM(textures_status, "mod"); BM(textures_sync_status, "mod"); BM(textures_cache_info, "mod"); BM(texture_get_cached, "mod", "path");
 	BM(court_env_status, "mod"); BM(court_sky_status, "mod"); BM(court_env_info, "mod", "stage_id"); BM(court_env_load, "mod", "stage_id");
+	BM(audio_list, "mod"); BM(audio_buses, "mod"); BM(audio_info, "mod", "id"); BM(audio_status, "mod");
+	ClassDB::bind_method(D_METHOD("audio_play", "mod", "id", "opts"), &JVModAPI::audio_play, DEFVAL(Dictionary()));
+	ClassDB::bind_method(D_METHOD("audio_play_loop", "mod", "id", "opts"), &JVModAPI::audio_play_loop, DEFVAL(Dictionary()));
+	BM(audio_stop, "mod", "handle_or_id"); BM(audio_stop_all, "mod");
+	BM(audio_set_volume, "mod", "handle", "volume"); BM(audio_set_bus, "mod", "handle", "bus");
+	BM(audio_apply_pack, "mod", "stage_id");
 	BM(accessories_status, "mod"); BM(accessories_list, "mod", "category");
 	BM(models_list, "mod"); BM(model_get_saved, "mod"); BM(model_get_shown, "mod"); BM(model_is_previewing, "mod"); BM(model_settings_get, "mod", "id");
 	BM(models_status, "mod"); BM(models_rig_report, "mod"); BM(model_preview, "mod", "id"); BM(model_apply, "mod", "id"); BM(model_end_preview, "mod");

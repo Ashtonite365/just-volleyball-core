@@ -41,6 +41,9 @@ Topology is a host relay, as with the skin-id sync (docs/TEXTURE_SYNC.md):
 
 ## Downloads
 
+When the assets-repo manifest lists a `download_url` or `source_url` for each file, the loader fetches those files one at a time into `mods/resources/packs/<folder>/` (a sanitized folder name from the manifest). Each URL must be a raw GitHub URL under `https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/` with ref `main` or a 40-character commit sha, with no redirects, query strings, or path tricks. Every file is size-capped, SHA-256 checked against the manifest, and run through the existing PNG/JSON/glb content checks. The pack.zip path into `mods/resources/cache/` remains the fallback when per-file URLs are absent. `content_auto_download` in `texture_sync.json` disables both paths.
+
+
 When a peer wears an item that is not installed, the mod checks the assets repo. Only this repo is
 used, and its address is compiled into the build:
 

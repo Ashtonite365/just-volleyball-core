@@ -73,6 +73,8 @@ class JVExtraShots : public Node {
 
 
 
+
+
 	String curve_display_remote_ = "grey";
 	String spin_display_ = "question";
 	struct SpinDisplay {
@@ -80,10 +82,10 @@ class JVExtraShots : public Node {
 		uint64_t ball = 0;
 		int64_t seq = -1, fseed = 0;
 		bool local = false, shimmer = false, shake = false;
-		bool question_on = false, path_on = false;
+		bool question_on = false, path_on = false, box_on = false;
 		String style, mode, why;
-		Vector3 exact, bias, center, question_pos;
-		double seen = 0, last_fade = 1, charge = 0;
+		Vector3 exact, bias, center, question_pos, box_start, box_end;
+		double seen = 0, last_fade = 1, charge = 0, box_half_w = 0;
 		Array path_points;
 	};
 	SpinDisplay spin_disp_;
@@ -95,6 +97,9 @@ class JVExtraShots : public Node {
 	void clear_spin_display(const String &why = "");
 	void ensure_display_nodes(Node *ball);
 	void hide_game_marker(Node *ball, bool hide);
+	void restore_remote_box_marker(Node *ball);
+	bool resolve_curve_range(Node *ball, const Vector3 &land, Vector3 &start, Vector3 &end) const;
+	void drive_remote_uncertainty_box(Node *ball, const Vector3 &start, const Vector3 &end, double fade, const Color &col);
 	Vector3 display_bias(int64_t seed) const;
 	bool is_local_hitter(Node *ball);
 	bool is_spin_flight(Node *ball) const;

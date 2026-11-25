@@ -1,4 +1,15 @@
 #include "content_share.hpp"
+#include "safe_content.hpp"
+#include <fstream>
+#include <map>
+#ifdef _WIN32
+#include <direct.h>
+#define JV_MKDIR(p) _mkdir(p)
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#define JV_MKDIR(p) ::mkdir((p), 0755)
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -154,12 +165,29 @@ std::optional<Offer> decode(const std::vector<uint8_t> &b) {
 
 static bool plain_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.'; }
 
-bool url_allowed(const std::string &url, const std::string &base) {
-	if (base.empty() || url.size() <= base.size() || url.compare(0, base.size(), base) != 0) return false;
-	std::string rest = url.substr(base.size());
-	if (rest.size() > 200 || rest.find("..") != std::string::npos || rest.find("//") != std::string::npos) return false;
+static bool url_rest_ok(const std::string &rest) {
+	if (rest.empty() || rest.size() > 200 || rest.find("..") != std::string::npos || rest.find("//") != std::string::npos) return false;
 	for (char c : rest) if (!plain_char(c) && c != '/') return false;
 	return true;
+}
+static bool is_commit_sha(const std::string &s) {
+	if (s.size() != 40) return false;
+	for (char c : s) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+	return true;
+}
+bool url_allowed(const std::string &url, const std::string &base) {
+	const std::string prefix = kRepoPrefix;
+	const bool official_base = base.empty() || base == kRawBase || base == prefix;
+	if (official_base && url.size() > prefix.size() && url.compare(0, prefix.size(), prefix) == 0) {
+		std::string rest = url.substr(prefix.size());
+		auto slash = rest.find('/');
+		if (slash == std::string::npos || slash == 0) return false;
+		std::string ref = rest.substr(0, slash);
+		if (ref != "main" && !is_commit_sha(ref)) return false;
+		return url_rest_ok(rest.substr(slash + 1));
+	}
+	if (base.empty() || url.size() <= base.size() || url.compare(0, base.size(), base) != 0) return false;
+	return url_rest_ok(url.substr(base.size()));
 }
 
 bool safe_repo_path(const std::string &p) {
@@ -197,8 +225,12 @@ Catalog validate_manifest(double schema, const std::vector<RawManifestItem> &raw
 		if (!zsha) { bad("sha256 must be 64 hex digits"); continue; }
 		if (!whole(r.size, 1, double(kMaxPackBytes))) { bad("size must be 1 .. " + std::to_string(kMaxPackBytes) + " bytes"); continue; }
 		if (!safe_repo_path(r.path)) { bad("unsafe path"); continue; }
-		const std::string url = base + r.path + "/pack.zip";
-		if (r.download_url != url || !url_allowed(url, base)) { bad("download_url must be " + url); continue; }
+		const std::string zip_suffix = r.path + "/pack.zip";
+		const std::string url = r.download_url;
+		const std::string default_url = base + zip_suffix;
+		if (!url_allowed(url, base) || url.size() < zip_suffix.size() || url.compare(url.size() - zip_suffix.size(), zip_suffix.size(), zip_suffix) != 0)
+			{ bad("download_url must be a raw URL for " + zip_suffix); continue; }
+		if (base != kRawBase && url != default_url) { bad("download_url must be " + default_url); continue; }
 		if (r.files.empty() || r.files.size() > kMaxEntries) { bad("files: 1 .. " + std::to_string(kMaxEntries) + " entries"); continue; }
 		CatalogItem ci;
 		bool ok = true;
@@ -209,7 +241,17 @@ Catalog validate_manifest(double schema, const std::vector<RawManifestItem> &raw
 			if (!safe || safe->empty() || *safe != fp) { bad("file '" + fp + "': unsafe name or type"); ok = false; break; }
 			if (!fsha || !whole(fv.second, 0, double(kMaxFileBytes))) { bad("file '" + fp + "': bad sha256 / size"); ok = false; break; }
 			total += uint64_t(fv.second);
-			ci.files.push_back({ fp, *fsha, uint64_t(fv.second) });
+			std::string furl;
+			auto uit = r.file_urls.find(fp);
+			if (uit != r.file_urls.end()) furl = uit->second;
+			if (!furl.empty()) {
+				if (!url_allowed(furl, base)) { bad("file '" + fp + "': download_url is not an allowed raw URL"); ok = false; break; }
+				if (furl.size() < fp.size() + 1 || furl.compare(furl.size() - fp.size() - 1, fp.size() + 1, "/" + fp) != 0
+						|| furl.find("/" + r.path + "/") == std::string::npos) {
+					bad("file '" + fp + "': download_url must end with /" + r.path + "/" + fp); ok = false; break;
+				}
+			}
+			ci.files.push_back({ fp, *fsha, uint64_t(fv.second), furl });
 		}
 		if (!ok) continue;
 		if (total > kMaxUnpackedBytes) { bad("files too large in total"); continue; }
@@ -276,6 +318,55 @@ Decision decide(const Item &o, const std::map<uint16_t, Hash> &installed, const 
 	if (ci->second.tree != o.hash || ci->second.tree_bytes != o.size || ci->second.kind != o.kind) return Decision::HashMismatch;
 	if (ci->second.zip_size > kMaxPackBytes || ci->second.tree_bytes > kMaxUnpackedBytes) return Decision::TooBig;
 	return Decision::Download;
+}
+
+bool files_have_urls(const CatalogItem &ci) {
+	if (ci.files.empty()) return false;
+	for (const auto &f : ci.files) if (f.url.empty()) return false;
+	return true;
+}
+
+std::string install_verified_files(const std::string &dest, const CatalogItem &ci,
+		const std::vector<std::pair<std::string, std::vector<uint8_t>>> &bodies) {
+	if (dest.empty() || dest.find("..") != std::string::npos) return "rejected: unsafe destination";
+	if (bodies.size() != ci.files.size()) return "rejected: files missing or extra";
+	std::map<std::string, const FileEntry *> want;
+	for (const auto &f : ci.files) want[f.path] = &f;
+	uint64_t total = 0;
+	for (const auto &b : bodies) {
+		auto safe = safe_entry(b.first);
+		if (!safe || *safe != b.first) return "rejected: unsafe entry '" + b.first + "'";
+		auto w = want.find(b.first);
+		if (w == want.end()) return "rejected: '" + b.first + "' is not in the manifest";
+		total += uint64_t(b.second.size());
+		if (uint64_t(b.second.size()) != w->second->size || uint64_t(b.second.size()) > kMaxFileBytes || total > kMaxUnpackedBytes)
+			return "rejected: size mismatch for '" + b.first + "'";
+		if (sha256(b.second.data(), b.second.size()) != w->second->sha)
+			return "rejected: hash mismatch for '" + b.first + "'";
+		std::string bad = jvm::safe::check_content_file(*safe, b.second.data(), b.second.size());
+		if (!bad.empty()) return "rejected: '" + b.first + "' " + bad;
+		std::string out = dest + "/" + b.first;
+		{
+			std::string dir = out;
+			auto slash = dir.rfind('/');
+			if (slash != std::string::npos) {
+				dir.resize(slash);
+				std::string sofar;
+				for (size_t i = 0; i < dir.size(); i++) {
+					sofar.push_back(dir[i]);
+					if (dir[i] == '/' || i + 1 == dir.size()) {
+						if (sofar.empty() || sofar == "/" || sofar == dest) continue;
+						JV_MKDIR(sofar.c_str());
+					}
+				}
+			}
+		}
+		std::ofstream f(out, std::ios::binary);
+		if (!f) return "failed: cannot write '" + b.first + "'";
+		f.write(reinterpret_cast<const char *>(b.second.data()), std::streamsize(b.second.size()));
+		if (!f) return "failed: cannot write '" + b.first + "'";
+	}
+	return {};
 }
 
 }

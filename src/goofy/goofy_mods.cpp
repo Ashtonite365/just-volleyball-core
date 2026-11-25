@@ -205,6 +205,9 @@ Dictionary JVGoofyMods::get_status() const {
 	f["panel_rows"] = panel_id_ != 0;
 	f["match_off"] = match_off_;
 	d["features"] = f;
+
+
+	d["goofy_api_version"] = api_version();
 	return d;
 }
 

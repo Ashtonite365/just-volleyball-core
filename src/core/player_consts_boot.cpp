@@ -15,6 +15,9 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
+#include <map>
+#include <string>
 
 using namespace godot;
 
@@ -68,6 +71,12 @@ bool parse(const std::vector<uint8_t> &c, uint32_t version, Buffer &b, std::stri
 		size_t len; double num;
 		if (!variant_at(&c[o], c.size() - o, len, num)) return fail("constant of an unhandled type");
 		b.const_num.push_back(num);
+		std::string s;
+		if (o + 8 <= c.size() && (u32(&c[o]) & 0xff) == 4) {
+			uint32_t sl = u32(&c[o + 4]);
+			if (o + 8 + sl <= c.size()) s.assign(reinterpret_cast<const char *>(&c[o + 8]), sl);
+		}
+		b.const_str.push_back(s);
 		o += len;
 	}
 	b.consts_blob.assign(c.begin() + cs, c.begin() + o);
@@ -168,6 +177,38 @@ bool consts_to_static(Buffer &b, const std::vector<std::pair<std::string, double
 	b.toks.swap(nt);
 	return true;
 }
+
+std::string named_const_string(const Buffer &b, const std::string &name) {
+	if (name.empty() || b.ids.empty() || b.toks.empty()) return "";
+	std::u32string un(name.begin(), name.end());
+	int32_t id = -1;
+	for (uint32_t i = 0; i < b.ids.size(); i++) if (b.ids[i] == un) { id = int32_t(i); break; }
+	if (id < 0) return "";
+	std::map<uint32_t, int> votes;
+	for (const auto &t : b.toks)
+		if ((t.type >> kTokenBits) == uint32_t(id) && (t.type >> kTokenBits)) votes[t.type & kTokenMask]++;
+	if (votes.empty()) return "";
+	uint32_t IDENT = 0; int best = -1;
+	for (auto &kv : votes) if (kv.second > best) { best = kv.second; IDENT = kv.first; }
+	std::map<uint32_t, int> lv;
+	for (const auto &t : b.toks) if ((t.type >> kTokenBits) && (t.type & kTokenMask) != IDENT) lv[t.type & kTokenMask]++;
+	uint32_t LITERAL = 0; best = -1;
+	for (auto &kv : lv) if (kv.second > best) { best = kv.second; LITERAL = kv.first; }
+	auto is_id = [&](const Token &t) { return (t.type & kTokenMask) == IDENT && (t.type >> kTokenBits) == uint32_t(id); };
+	std::map<uint32_t, uint32_t> line_start(b.lines.begin(), b.lines.end());
+	for (size_t i = 1; i < b.toks.size(); i++) {
+		if (!is_id(b.toks[i]) || !line_start.count(uint32_t(i - 1))) continue;
+		if (b.toks[i - 1].type > kTokenMask) continue;
+		for (size_t k = i + 1; k < std::min(b.toks.size(), i + 8); k++) {
+			if ((b.toks[k].type & kTokenMask) != LITERAL) continue;
+			uint32_t ci = b.toks[k].type >> kTokenBits;
+			if (ci < b.const_str.size() && !b.const_str[ci].empty()) return b.const_str[ci];
+			break;
+		}
+	}
+	return "";
+}
+
 }
 
 static const char *kPlayerGd = "res://game/player/player.gd";

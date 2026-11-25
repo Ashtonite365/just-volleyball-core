@@ -10,6 +10,8 @@
 
 
 #include "texture_loader.hpp"
+#include "safe_load.hpp"
+#include "gate/safe_content.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
@@ -23,6 +25,7 @@
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/zip_reader.hpp>
 
+#include <algorithm>
 #include <cstring>
 
 using namespace godot;
@@ -36,6 +39,7 @@ static double now_s() { return Time::get_singleton()->get_ticks_msec() / 1000.0;
 static String hex_id(uint16_t id) { return G(sk::format_id(id)); }
 
 String godot::content_cache_dir() { return jvm::mods_dir("resources/cache"); }
+String godot::content_packs_dir() { return jvm::mods_dir("resources/packs"); }
 
 String JVTextureLoader::content_base() const {
 
@@ -214,7 +218,12 @@ void JVTextureLoader::consider_offer(int32_t peer) {
 }
 
 void JVTextureLoader::start_http(const String &url, int64_t limit, const String &what) {
-	if (!cs::url_allowed(S(url), S(content_base()))) { jvm::warn("textures", "content: refused URL " + url); return; }
+	if (!cs::url_allowed(S(url), S(content_base()))) {
+		jvm::warn("textures", "content: refused URL " + url);
+		http_what_ = what;
+		_on_http_done(HTTPRequest::RESULT_REDIRECT_LIMIT_REACHED, 0, PackedStringArray(), PackedByteArray());
+		return;
+	}
 	if (!http_) {
 		HTTPRequest *h = memnew(HTTPRequest);
 		h->set_name("ContentDownload");
@@ -248,15 +257,28 @@ void JVTextureLoader::_on_http_done(int64_t result, int64_t code, const PackedSt
 		on_manifest(body);
 		return;
 	}
+	if (what.begins_with("file:")) {
+		PackedStringArray bits = what.split(":");
+		auto id = bits.size() == 3 ? sk::parse_id(S(bits[1])) : std::optional<uint16_t>{};
+		size_t index = bits.size() == 3 ? size_t(bits[2].to_int()) : 0;
+		if (!id || !file_dl_active_ || file_dl_id_ != *id) return;
+		String err = ok ? finish_file_fetch(*id, index, body)
+				: result == HTTPRequest::RESULT_BODY_SIZE_LIMIT_EXCEEDED ? String("rejected: larger than the manifest says (size cap)")
+				: result == HTTPRequest::RESULT_REDIRECT_LIMIT_REACHED ? String("rejected: URL is not an allowed raw.githubusercontent.com address")
+				: String("failed: download (result ") + String::num_int64(result) + ", HTTP " + String::num_int64(code) + ")";
+		if (!err.is_empty()) abort_file_fetch(*id, err);
+		return;
+	}
 	auto id = sk::parse_id(S(what));
 	if (!id) return;
 	String err = ok ? install_pack(*id, body)
 			: result == HTTPRequest::RESULT_BODY_SIZE_LIMIT_EXCEEDED ? String("rejected: larger than the manifest says (size cap)")
+			: result == HTTPRequest::RESULT_REDIRECT_LIMIT_REACHED ? String("rejected: URL is not an allowed raw.githubusercontent.com address")
 			: String("failed: download (result ") + String::num_int64(result) + ", HTTP " + String::num_int64(code) + ")";
 	if (err.is_empty()) {
 		dl_state_[*id] = "installed";
 		dl_ok_++;
-		jvm::log("textures", "content: " + what + " downloaded and installed into the cache");
+		jvm::log("textures", "content: " + what + " downloaded and installed");
 		content_reload(catalog_.items.count(*id) && catalog_.items[*id].kind == cs::Kind::Model);
 	} else {
 		dl_state_[*id] = err;
@@ -293,7 +315,11 @@ void JVTextureLoader::on_manifest(const PackedByteArray &body) {
 						Dictionary f = fa[k];
 						Variant fs = f.get("size", Variant());
 						double fsz = (fs.get_type() == Variant::INT || fs.get_type() == Variant::FLOAT) ? double(fs) : -1.0;
-						r.files.push_back({ S(String(f.get("path", ""))), { S(String(f.get("sha256", ""))), fsz } });
+						std::string fpath = S(String(f.get("path", "")));
+						r.files.push_back({ fpath, { S(String(f.get("sha256", ""))), fsz } });
+						std::string furl = S(String(f.get("download_url", "")));
+						if (furl.empty()) furl = S(String(f.get("source_url", "")));
+						if (!furl.empty()) r.file_urls[fpath] = furl;
 					}
 				}
 				raw.push_back(r);
@@ -364,6 +390,10 @@ String JVTextureLoader::install_pack(uint16_t id, const PackedByteArray &zip) {
 				total += uint64_t(data.size());
 				if (uint64_t(data.size()) != w->second.size || uint64_t(data.size()) > cs::kMaxFileBytes || total > cs::kMaxUnpackedBytes) { err = "rejected: size mismatch for '" + names[i] + "'"; break; }
 				if (cs::sha256(data.ptr(), size_t(data.size())) != w->second.sha) { err = "rejected: hash mismatch for '" + names[i] + "'"; break; }
+				{
+					std::string bad = jvm::safe::check_content_file(*safe, data.ptr(), size_t(data.size()));
+					if (!bad.empty()) { err = "rejected: '" + names[i] + "' " + G(bad); jvm::safe::note_refusal("download " + hex_id(id) + ": " + err); break; }
+				}
 				String out = part.path_join(names[i]);
 				DirAccess::make_dir_recursive_absolute(out.get_base_dir());
 				Ref<FileAccess> f = FileAccess::open(out, FileAccess::WRITE);
@@ -379,6 +409,84 @@ String JVTextureLoader::install_pack(uint16_t id, const PackedByteArray &zip) {
 	const String final_dir = croot.path_join(G(ci.folder));
 	remove_tree(final_dir, croot);
 	if (DirAccess::rename_absolute(part, final_dir) != OK) { remove_tree(part, croot); return "failed: cannot move into the cache"; }
+	return "";
+}
+
+
+void JVTextureLoader::start_file_fetch(uint16_t id) {
+	auto ci_it = catalog_.items.find(id);
+	if (ci_it == catalog_.items.end() || !cs::files_have_urls(ci_it->second)) {
+		dl_state_[id] = "rejected: no per-file download URLs";
+		dl_rejected_++;
+		return;
+	}
+	const cs::CatalogItem &ci = ci_it->second;
+	if (!cs::safe_repo_path("x/" + ci.folder)) { dl_state_[id] = "rejected: unsafe folder"; dl_rejected_++; return; }
+	const String proot = content_packs_dir();
+	DirAccess::make_dir_recursive_absolute(proot);
+	const String part = proot.path_join("." + G(ci.folder) + ".part");
+	remove_tree(part, proot);
+	DirAccess::make_dir_recursive_absolute(part);
+	file_dl_id_ = id;
+	file_dl_index_ = 0;
+	file_dl_part_ = part;
+	file_dl_active_ = true;
+	const auto &f = ci.files[0];
+	start_http(G(f.url), int64_t(std::min(f.size, cs::kMaxFileBytes)), "file:" + hex_id(id) + ":0");
+}
+
+void JVTextureLoader::abort_file_fetch(uint16_t id, const String &err) {
+	const String proot = content_packs_dir();
+	if (!file_dl_part_.is_empty()) remove_tree(file_dl_part_, proot);
+	file_dl_active_ = false;
+	file_dl_part_ = "";
+	file_dl_index_ = 0;
+	dl_state_[id] = err;
+	if (err.begins_with("rejected")) dl_rejected_++;
+	jvm::warn("textures", "content: " + hex_id(id) + " " + err);
+	for (auto &[peer, items] : offers_) consider_offer(peer);
+}
+
+String JVTextureLoader::finish_file_fetch(uint16_t id, size_t index, const PackedByteArray &body) {
+	auto ci_it = catalog_.items.find(id);
+	if (ci_it == catalog_.items.end()) return "rejected: not in the manifest";
+	const cs::CatalogItem &ci = ci_it->second;
+	if (index != file_dl_index_ || index >= ci.files.size()) return "rejected: unexpected file";
+	const cs::FileEntry &want = ci.files[index];
+	auto safe = cs::safe_entry(want.path);
+	if (!safe || *safe != want.path) return "rejected: unsafe entry '" + G(want.path) + "'";
+	if (uint64_t(body.size()) != want.size || uint64_t(body.size()) > cs::kMaxFileBytes) return "rejected: size mismatch for '" + G(want.path) + "'";
+	if (cs::sha256(body.ptr(), size_t(body.size())) != want.sha) return "rejected: hash mismatch for '" + G(want.path) + "'";
+	{
+		std::string bad = jvm::safe::check_content_file(*safe, body.ptr(), size_t(body.size()));
+		if (!bad.empty()) { String err = "rejected: '" + G(want.path) + "' " + G(bad); jvm::safe::note_refusal("download " + hex_id(id) + ": " + err); return err; }
+	}
+	const String proot = content_packs_dir();
+	if (!file_dl_part_.begins_with(proot + String("/"))) return "rejected: unsafe destination";
+	String out = file_dl_part_.path_join(G(want.path));
+	DirAccess::make_dir_recursive_absolute(out.get_base_dir());
+	{
+		Ref<FileAccess> f = FileAccess::open(out, FileAccess::WRITE);
+		if (f.is_null()) return "failed: cannot write the pack";
+		f->store_buffer(body);
+	}
+	file_dl_index_++;
+	if (file_dl_index_ < ci.files.size()) {
+		const auto &next = ci.files[file_dl_index_];
+		start_http(G(next.url), int64_t(std::min(next.size, cs::kMaxFileBytes)), "file:" + hex_id(id) + ":" + String::num_int64(int64_t(file_dl_index_)));
+		return "";
+	}
+	const String final_dir = proot.path_join(G(ci.folder));
+	remove_tree(final_dir, proot);
+	if (DirAccess::rename_absolute(file_dl_part_, final_dir) != OK) { remove_tree(file_dl_part_, proot); return "failed: cannot move into packs"; }
+	file_dl_active_ = false;
+	file_dl_part_ = "";
+	file_dl_index_ = 0;
+	dl_state_[id] = "installed";
+	dl_ok_++;
+	jvm::log("textures", "content: " + hex_id(id) + " downloaded and installed into packs/" + G(ci.folder));
+	content_reload(ci.kind == cs::Kind::Model);
+	for (auto &[peer, items] : offers_) consider_offer(peer);
 	return "";
 }
 
@@ -461,7 +569,8 @@ void JVTextureLoader::content_tick() {
 		auto ci = catalog_.items.find(id);
 		if (ci == catalog_.items.end() || dl_state_[id] != "queued") continue;
 		dl_state_[id] = "downloading";
-		start_http(G(ci->second.url), int64_t(ci->second.zip_size), hex_id(id));
+		if (cs::files_have_urls(ci->second)) start_file_fetch(id);
+		else start_http(G(ci->second.url), int64_t(ci->second.zip_size), hex_id(id));
 		break;
 	}
 }

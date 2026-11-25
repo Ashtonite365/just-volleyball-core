@@ -23,7 +23,7 @@ the game folder (the folder that contains volleyball.exe)/
   override.cfg                NEW - the only file outside mods\ ; autoloads res://mods/bootstrap.gd
   mods/                       NEW - the single jv-mods install folder
     bootstrap.gd              loads the extensions, spawns nodes
-    pins.json                 pinned game version (build 26827091)
+    pins.json                 approved game versions
     gate_probes.json          how the gate reads lobby state
     texture_sync.json         texture sync settings
     Watch-JvModStatus.ps1     live status viewer
@@ -72,19 +72,23 @@ Verification:
 
 ## Version pin (runs before any mod library is loaded)
 `bootstrap.gd` loads only `jvm_core`, calls `JVModGate.verify_version()`, and loads the
-category libraries **only if it matches** a pin in `mods/pins.json`:
-engine string (`Engine.get_version_info()`), `volleyball.pck` size and full SHA256,
-`volleyball.exe` size, and the Steam buildid from `..\..\appmanifest_5037200.acf`
-(read-only; compared only when readable). Missing/empty/unparseable pins file = refuse.
+category libraries **only if** `GameConfig.VERSION` (the game's own title/menu label,
+`const VERSION` in `res://game/core/game_config.gd`) is on the approved list in
+`mods/pins.json`: the top-level `versions` array and/or each pin's `version` field.
+If the version string cannot be read, or is not approved, nothing else is loaded.
+Steam buildid (from `../../appmanifest_5037200.acf`, read-only) and pck/exe size +
+SHA256 are still recorded in `user://jv_mods/status.json` and the log, as info only.
 The SHA256 is cached in `user://jv_mods/pin_cache.json` keyed by size+mtime.
-Cost on the real 171 MB pck (box, Wine): **~1.25 s first launch, ~1 ms cached**.
+Old `pins.json` files with no version field still match by pck hash/size (a readable
+version string is still required). Missing/empty/unparseable pins file = refuse.
 
 On mismatch: no category library is loaded (textures included), every library is
 reported `disabled-version-mismatch`, an amber on-screen line says
-"just volleyball mods disabled: game version changed (expected build 26827091, found ...).
+"just volleyball mods disabled: game version changed (expected 1.0.4.2, found ...).
 Update the mods." and the reason goes to `user://jv_mods/jv_mods.log`. The game runs
 unmodded. jv-mods only ever writes inside `user://jv_mods/` (never the game's saves in
 `user://data`).
+
 
 ## Status readout
 `user://jv_mods/status.json` = on Windows

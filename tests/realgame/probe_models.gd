@@ -5,6 +5,14 @@ extends Node
 
 
 func p(msg: String) -> void: print("PROBE ", msg)
+
+
+func set_model_pick(id: String) -> void:
+	var path := ProjectSettings.globalize_path("res://mods/resources/packs/equipped.json")
+	var old = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	var d: Dictionary = old if old is Dictionary else {}
+	d["model"] = id
+	var f := FileAccess.open(path, FileAccess.WRITE); f.store_string(JSON.stringify(d)); f.close()
 var m: Node = null
 var out_dir := ""
 func shot(name: String) -> void:
@@ -67,7 +75,6 @@ func _ready() -> void:
 
 	var cam := Camera3D.new(); cam.fov = 40.0; m.add_child(cam)
 	var ui = m.get("ui")
-	var root := ProjectSettings.globalize_path("res://mods/models")
 	var cases := ("" if OS.get_environment("JV_MODEL_CASES") == "" else OS.get_environment("JV_MODEL_CASES")).split(",")
 	cases.insert(0, ":vanilla")
 
@@ -76,8 +83,7 @@ func _ready() -> void:
 	var ball = m.get("ball")
 	for c in cases:
 		var id: String = c.split(":")[0]; var label: String = c.split(":")[1]
-		var f := FileAccess.open(root.path_join("equipped.json"), FileAccess.WRITE)
-		f.store_string(JSON.stringify({"equipped": [], "model": id})); f.close()
+		set_model_pick(id)
 		ml.call("reload_config")
 		for i in 10: await get_tree().process_frame
 		var g := grafts(rig)
@@ -126,8 +132,7 @@ func _ready() -> void:
 		if ui: ui.visible = true
 		if ball: ball.visible = true
 
-	var f2 := FileAccess.open(root.path_join("equipped.json"), FileAccess.WRITE)
-	f2.store_string(JSON.stringify({"equipped": [], "model": cases[cases.size() - 1].split(":")[0]})); f2.close()
+	set_model_pick(cases[cases.size() - 1].split(":")[0])
 	ml.call("reload_config")
 	var rig2: Node = load("res://game/character/model_rig.gd").new()
 	pl.get_node("Visual").add_child(rig2)

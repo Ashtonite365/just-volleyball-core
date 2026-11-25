@@ -1,3 +1,4 @@
+#include "safe_load.hpp"
 #include "court_env.hpp"
 #include "../common/jvm_common.hpp"
 #include "../common/jv_prof.hpp"
@@ -9,8 +10,11 @@ jvm::GameIO &jvm_textures_io();
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/gltf_document.hpp>
 #include <godot_cpp/classes/gltf_state.hpp>
+#include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/mesh.hpp>
+#include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -19,6 +23,8 @@ jvm::GameIO &jvm_textures_io();
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/collision_object3d.hpp>
+#include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/core/object.hpp>
 
@@ -48,7 +54,8 @@ void vertex() {
 void fragment() {
 	vec4 t = use_tex ? texture(albedo_tex, UV) : vec4(1.0);
 	ALBEDO = t.rgb * albedo_color.rgb * COLOR.rgb;
-	ALPHA = t.a * albedo_color.a * COLOR.a;
+	// Opaque on purpose: assigning ALPHA puts the pass in the transparent
+	// queue and buries the net, court lines, and the landing indicator.
 }
 )";
 
@@ -98,7 +105,9 @@ static bool is_env_prop(const String &n) {
 	if (t.begins_with("Hill") || t.begins_with("Seats") || t.begins_with("Gym walls")
 			|| t.begins_with("Ceiling") || t.begins_with("Gym doors") || t.begins_with("GymExtra")
 			|| t.begins_with("Tree") || t.begins_with("Palm") || t.begins_with("Bld")
-			|| t.begins_with("Shadow") || t.begins_with("FillShadow"))
+			|| t.begins_with("Shadow") || t.begins_with("FillShadow")
+			|| t.begins_with("Stand") || t.begins_with("BeachCrowd") || t.begins_with("BeachTown")
+			|| t.begins_with("CrowdField") || t.begins_with("NationalsStand"))
 		return true;
 	return false;
 }
@@ -221,6 +230,44 @@ static void revert_for_parent(uint64_t parent_id) {
 	}
 }
 
+static bool is_floorish_name(const String &n) {
+	String t = n.to_lower();
+	return t.contains("floor") || t.contains("deck") || t.contains("ground")
+		|| t.contains("sand") || t.contains("seabed") || t.contains("terrace")
+		|| t.contains("dojo_floor") || t.contains("snow_floor");
+}
+
+static bool is_lanternish_name(const String &n) {
+	String t = n.to_lower();
+
+	return t.contains("lantern_glass") || t.contains("lamp_glass") || t.contains("glow");
+}
+
+
+
+static void make_opaque_default(Material *m) {
+	if (!m) return;
+	if (BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m)) {
+		bm->set_transparency(BaseMaterial3D::TRANSPARENCY_DISABLED);
+		bm->set_render_priority(0);
+	} else if (ShaderMaterial *sm = Object::cast_to<ShaderMaterial>(m)) {
+		sm->set_render_priority(0);
+	}
+}
+
+
+
+static void sanitize_env_colliders(Node *n, int depth) {
+	if (!n || depth > 16) return;
+	if (CollisionObject3D *co = Object::cast_to<CollisionObject3D>(n)) {
+		co->set_collision_layer(0);
+		co->set_collision_mask(0);
+		co->set_ray_pickable(false);
+	}
+	int cc = n->get_child_count();
+	for (int i = 0; i < cc; i++) sanitize_env_colliders(n->get_child(i), depth + 1);
+}
+
 static void apply_sway(Node *n, int depth) {
 	if (!n || depth > 12) return;
 	if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(n)) {
@@ -236,6 +283,7 @@ static void apply_sway(Node *n, int depth) {
 			sm->set_shader(sh);
 			sm->set_shader_parameter("sway_amp", 0.18);
 			sm->set_shader_parameter("sway_speed", 0.55);
+			sm->set_render_priority(-128);
 			Ref<Material> orig = mi->get_active_material(s);
 			if (orig.is_valid()) {
 				if (StandardMaterial3D *std = Object::cast_to<StandardMaterial3D>(orig.ptr())) {
@@ -277,42 +325,129 @@ static void polish_mesh(Node *n, bool baked, bool sway_all, float vis_begin, flo
 					else polish_tris_ += verts.size() / 3;
 				}
 			}
+			String nm_early = String(n->get_name()).to_lower();
+			const bool lanternish = is_lanternish_name(nm_early);
 			if (baked) {
 				for (int s = 0; s < sc; s++) {
 					Ref<Material> orig = mi->get_active_material(s);
 					if (StandardMaterial3D *std = Object::cast_to<StandardMaterial3D>(orig.ptr())) {
 						std->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
 						std->set_flag(BaseMaterial3D::FLAG_SRGB_VERTEX_COLOR, true);
-						std->set_flag(BaseMaterial3D::FLAG_DISABLE_AMBIENT_LIGHT, true);
-						std->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
 						std->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+						if (lanternish) {
+
+
+							std->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+							std->set_emission(std->get_albedo());
+							std->set_emission_energy_multiplier(1.8f);
+							std->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_PIXEL);
+						} else {
+							std->set_flag(BaseMaterial3D::FLAG_DISABLE_AMBIENT_LIGHT, true);
+							std->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+						}
 					}
 				}
 			}
 		}
+
+		if (mi->get_mesh().is_valid()) {
+			Ref<Mesh> mesh = mi->get_mesh();
+			int sc = mesh->get_surface_count();
+			for (int s = 0; s < sc; s++) {
+				make_opaque_default(mi->get_active_material(s).ptr());
+				make_opaque_default(mi->get_surface_override_material(s).ptr());
+			}
+		}
+		make_opaque_default(mi->get_material_override().ptr());
 		String nm = String(n->get_name()).to_lower();
-		if (sway_all || nm.contains("sway") || nm.contains("kelp") || nm.contains("grass"))
+
+		if (!is_floorish_name(nm) && (sway_all || nm.contains("sway") || nm.contains("kelp") || nm.contains("grass")))
 			apply_sway(mi, 0);
 	}
 	int cc = n->get_child_count();
 	for (int i = 0; i < cc; i++) polish_mesh(n->get_child(i), baked, sway_all, vis_begin, vis_end, depth + 1);
 }
 
+
+
+
+
+
+
+static const int kEnvRenderPriority = -128;
+static const float kFloorTopY = -0.06f;
+
+static void force_opaque_low_priority(Material *mat) {
+	if (!mat) return;
+	if (StandardMaterial3D *std = Object::cast_to<StandardMaterial3D>(mat)) {
+		std->set_transparency(BaseMaterial3D::TRANSPARENCY_DISABLED);
+		std->set_render_priority(kEnvRenderPriority);
+	} else if (ShaderMaterial *sm = Object::cast_to<ShaderMaterial>(mat)) {
+		sm->set_render_priority(kEnvRenderPriority);
+	}
+}
+
+static bool looks_like_floor(MeshInstance3D *mi) {
+	if (!mi) return false;
+	if (is_floorish_name(String(mi->get_name())))
+		return true;
+	if (!mi->is_inside_tree()) return false;
+	AABB w = mi->get_global_transform().xform(mi->get_aabb());
+	const float top = w.position.y + w.size.y;
+
+	return w.size.x > 8.0f && w.size.z > 8.0f && w.size.y < 1.5f
+		&& top > -0.25f && top < 0.6f;
+}
+
+static void enforce_env_sorting(Node *n, int depth) {
+	if (!n || depth > 16) return;
+	if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(n)) {
+		if (mi->get_material_override().is_valid())
+			force_opaque_low_priority(mi->get_material_override().ptr());
+		Ref<Mesh> mesh = mi->get_mesh();
+		int sc = mesh.is_valid() ? mesh->get_surface_count() : 0;
+		if (sc <= 0) sc = 1;
+		for (int s = 0; s < sc; s++) {
+			Ref<Material> ov = mi->get_surface_override_material(s);
+			if (ov.is_valid()) {
+				force_opaque_low_priority(ov.ptr());
+				continue;
+			}
+			if (!mesh.is_valid()) continue;
+			Ref<Material> sm = mesh->surface_get_material(s);
+			if (!sm.is_valid()) continue;
+			Ref<Material> dup = sm->duplicate();
+			force_opaque_low_priority(dup.ptr());
+			mi->set_surface_override_material(s, dup);
+		}
+	}
+	int cc = n->get_child_count();
+	for (int i = 0; i < cc; i++) enforce_env_sorting(n->get_child(i), depth + 1);
+}
+
+static void clamp_env_floors(Node *n, int depth) {
+	if (!n || depth > 16) return;
+	if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(n)) {
+		if (looks_like_floor(mi) && mi->is_inside_tree()) {
+			AABB w = mi->get_global_transform().xform(mi->get_aabb());
+			const float top = w.position.y + w.size.y;
+			if (top > kFloorTopY) {
+				Vector3 p = mi->get_global_position();
+				p.y -= (top - kFloorTopY);
+				mi->set_global_position(p);
+			}
+		}
+	}
+	int cc = n->get_child_count();
+	for (int i = 0; i < cc; i++) clamp_env_floors(n->get_child(i), depth + 1);
+}
+
 static Node3D *load_glb(const String &path, String &why) {
 	JVM_PROF("court_env.load_glb");
 	if (path.is_empty()) { why = "empty path"; return nullptr; }
 	if (!FileAccess::file_exists(path)) { why = "file not found"; return nullptr; }
-	Ref<GLTFDocument> doc;
-	doc.instantiate();
-	Ref<GLTFState> state;
-	state.instantiate();
-	Error err = doc->append_from_file(path, state, 0, path.get_base_dir());
-	if (err != OK) {
-		why = "GLTF append_from_file failed (" + String::num_int64(err) + ")";
-		return nullptr;
-	}
-	Node *gen = doc->generate_scene(state);
-	if (!gen) { why = "generate_scene returned null"; return nullptr; }
+	Node *gen = jvm::safe::load_glb(path, why);
+	if (!gen) { jvm::safe::note_refusal("court mesh " + path + ": " + why); return nullptr; }
 	Node3D *root = Object::cast_to<Node3D>(gen);
 	if (!root) {
 		root = memnew(Node3D);
@@ -322,6 +457,23 @@ static Node3D *load_glb(const String &path, String &why) {
 	return root;
 }
 
+}
+
+
+static void attach_pack_lights(Node3D *root, const EnvSpec &env) {
+	if (!root) return;
+	for (const LightSpec &L : env.lights) {
+		String typ = L.type.to_lower();
+		if (!typ.is_empty() && typ != "omni") continue;
+		OmniLight3D *ol = memnew(OmniLight3D);
+		ol->set_name("JVM_PackLight");
+		ol->set_position(L.position);
+		ol->set_color(L.color);
+		ol->set_param(Light3D::PARAM_ENERGY, L.energy);
+		ol->set_param(Light3D::PARAM_RANGE, L.range);
+		ol->set_shadow(false);
+		root->add_child(ol);
+	}
 }
 
 void apply_env(Node *scene, Node *court, Node *grass, const EnvSpec &env) {
@@ -385,14 +537,22 @@ void apply_env(Node *scene, Node *court, Node *grass, const EnvSpec &env) {
 		n->set_rotation_degrees(env.rotation_deg);
 		n->set_scale(env.scale);
 		polish_mesh(n, env.baked_lighting, env.sway, lod.visible_begin, lod.visible_end, 0);
+		sanitize_env_colliders(n, 0);
 		root->add_child(n);
 		in.spawned++;
 	}
+	attach_pack_lights(root, env);
+
+
+
+	enforce_env_sorting(root, 0);
+	clamp_env_floors(root, 0);
 	in.tris = polish_tris_;
 	in.draws = polish_draws_;
 	instances_.push_back(in);
 	jvm::log("court-env", "applied spawned=" + String::num_int64(in.spawned)
 		+ " hidden=" + String::num_int64(int64_t(in.vis.size()))
+		+ " lights=" + String::num_int64(int64_t(env.lights.size()))
 		+ " parent=" + in.parent_path);
 }
 

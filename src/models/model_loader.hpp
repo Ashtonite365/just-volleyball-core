@@ -128,6 +128,7 @@ class JVModelLoader : public Node {
 	String hook_state_ = "not installed";
 	double hook_check_t_ = 0.0;
 	bool scanned_ = false;
+	bool legacy_layout_ = false;
 
 
 	std::vector<ObjectID> lockers_;

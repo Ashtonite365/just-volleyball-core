@@ -20,6 +20,7 @@ struct Buffer {
 	uint32_t ncon = 0;
 	std::vector<uint8_t> consts_blob;
 	std::vector<double> const_num;
+	std::vector<std::string> const_str;
 	std::vector<std::pair<uint32_t, uint32_t>> lines, cols;
 	std::vector<Token> toks;
 };
@@ -28,6 +29,8 @@ bool parse(const std::vector<uint8_t> &contents, uint32_t version, Buffer &out, 
 std::vector<uint8_t> build_contents(const Buffer &b);
 
 bool consts_to_static(Buffer &b, const std::vector<std::pair<std::string, double>> &names, std::string &why);
+
+std::string named_const_string(const Buffer &b, const std::string &name);
 }
 
 namespace godot {

@@ -50,10 +50,11 @@ const std::vector<ModInfo> &mods() {
 			"public lobbies / Quick Match: local only - only you see it, nothing is sent.",
 			{ "texture_sync.json", "resources/packs/equipped.json" }, false },
 		{ "models", "map loader: player models", "models", "/root/JVModelLoader",
-			"Full player models from mods\\models (one folder per model, found at runtime), worn by you; pick one in the\n"
-			"locker's full model tab or \"model\": \"<id>\" in models\\equipped.json. The game's animations and hands drive it.",
+			"Full player models: kind \"model\" packs in mods\\resources\\packs (one folder per model, next to the other packs; the old\n"
+			"mods\\models folder is still read), worn by you; pick one in the locker's full model tab or \"model\": \"<id>\" in\n"
+			"resources\\packs\\equipped.json. The game's animations and hands drive it.",
 			"main menu / offline / LAN / private / friends / public lobbies: local only - only you see it, nothing is sent.",
-			{ "models/equipped.json" }, false },
+			{ "resources/packs/equipped.json", "resources/packs/model_settings.json", "models/equipped.json", "models/model_settings.json" }, false },
 		{ "shots", "custom shots", "shots", "/root/JVExtraShots",
 			"Air controls on the game's own keys (rally touch IN THE AIR): forward = topspin (exact landing marker),\n"
 			"back = Float (the game's own float + its float box), left/right = Curveball (hold longer = further;\n"

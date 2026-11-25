@@ -8,12 +8,12 @@ Related repositories: [mods](https://github.com/Ashtonite365/just-volleyball-mod
 
 
 Four C++ GDExtension libraries (the texture and model loaders are merged into jvm_loader) (godot-cpp `godot-4.5-stable`, loads in Godot 4.5+;
-the game is Godot 4.7.1 custom build + GodotSteam), pinned to Steam build 26924091 (Just Volleyball v1.0.4).
+the game is Godot 4.7.1 custom build + GodotSteam). Mods are pinned to the game's version string (currently approved: 1.0.4.2); Steam build id and pck hash are recorded as info only (docs/LOADING.md).
 
 | library | class | tier | status |
 |---|---|---|---|
-| jvm_core | JVModGate (+JVMenuUI) | - | **working** version pin, allowlist gate (fail closed), status.json, F8 overlay, logging, main-menu mods card/panel (docs/MENU.md), in-menu config editor |
-| jvm_loader | JVLoader (+ JVTextureLoader, JVModelLoader subsystems) | cosmetic | **unified map loader** (docs/UNIFIED-LOADER.md): texture packs with 4-hex IDs, global replace, per-player skins, ID sync; custom player models from `mods\models`; stage/ball picker packs; runs a stage pack's optional `goofy` section through Goofy's layer API when Goofy is installed + enabled. Replaces jvm_textures + jvm_models. |
+| jvm_core | JVModGate (+JVMenuUI) | - | **working** version-string pin (approved game versions in pins.json), allowlist gate (fail closed), status.json, F8 overlay, logging, main-menu mods card/panel (docs/MENU.md), in-menu config editor |
+| jvm_loader | JVLoader (+ JVTextureLoader, JVModelLoader subsystems) | cosmetic | **unified map loader** (docs/UNIFIED-LOADER.md): texture packs with 4-hex IDs, global replace, per-player skins, ID sync, optional fetch of missing packs from the assets repo (https only, hash + size checked, docs/CONTENT-SECURITY.md); custom player models from `mods/models` or `mods/resources/packs`; stage/ball picker packs; runs a stage pack's optional `goofy` section through Goofy's layer API when Goofy is installed + enabled. Replaces jvm_textures + jvm_models. |
 | jvm_shots | JVExtraShots | full | **working on the real Ball** (struck hook); 9 shots as combos of the game's own actions + camera-relative curve (docs/SHOTS.md) |
 | jvm_goofy | JVGoofyMods | full | **working** big ball, ball physics, player scale, max hits per team, no double-hit (+ Modifiers panel rows), time_scale opt-in (docs/GOOFY.md) |
 

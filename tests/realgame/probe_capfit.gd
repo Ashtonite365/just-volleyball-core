@@ -2,6 +2,14 @@ extends Node
 
 
 func p(msg: String) -> void: print("PROBE ", msg)
+
+
+func set_model_pick(id: String) -> void:
+	var path := ProjectSettings.globalize_path("res://mods/resources/packs/equipped.json")
+	var old = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	var d: Dictionary = old if old is Dictionary else {}
+	d["model"] = id
+	var f := FileAccess.open(path, FileAccess.WRITE); f.store_string(JSON.stringify(d)); f.close()
 var m: Node = null
 var out_dir := ""
 var prefix := "before"
@@ -132,10 +140,10 @@ func _ready() -> void:
 	await views(pl, cam, "bean")
 
 	var M := ProjectSettings.globalize_path("res://mods")
-	var MD := M.path_join("models")
-	var eq_path := MD.path_join("equipped.json")
+	var eq_path := M.path_join("resources/packs/equipped.json")
 	var prev := FileAccess.get_file_as_string(eq_path)
-	var f := FileAccess.open(eq_path, FileAccess.WRITE); f.store_string("{\"model\": \"\"}"); f.close()
+	set_model_pick("")
+	var f: FileAccess
 	if ml: ml.call("reload_config")
 	await frames(40)
 	if tl: tl.call("reload_config")
@@ -143,7 +151,7 @@ func _ready() -> void:
 	report("vanilla", pl, tl, ml)
 	await views(pl, cam, "vanilla")
 
-	f = FileAccess.open(eq_path, FileAccess.WRITE); f.store_string(prev if prev != "" else "{\"model\": \"BEA0\"}"); f.close()
+	f = FileAccess.open(eq_path, FileAccess.WRITE); f.store_string(prev if prev != "" else "{\"equipped\": [\"1001\", \"1002\", \"1003\"], \"model\": \"BEA0\"}"); f.close()
 	if ml: ml.call("reload_config")
 	await frames(20)
 	p("done")

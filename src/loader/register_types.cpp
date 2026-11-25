@@ -4,6 +4,7 @@
 #include "../models/model_loader.hpp"
 #include "../models/model_tab.hpp"
 #include "../textures/texture_loader.hpp"
+#include "native_audio.hpp"
 #include "unified_loader.hpp"
 
 #include <gdextension_interface.h>
@@ -16,6 +17,7 @@ static void init(ModuleInitializationLevel l) {
 	GDREGISTER_CLASS(JVModelLoader);
 	GDREGISTER_CLASS(JVModelTab);
 	GDREGISTER_CLASS(JVLoader);
+	GDREGISTER_CLASS(JVMNativeAudio);
 }
 static void deinit(ModuleInitializationLevel) {}
 extern "C" GDExtensionBool GDE_EXPORT jvm_loader_init(GDExtensionInterfaceGetProcAddress p, const GDExtensionClassLibraryPtr lib, GDExtensionInitialization *i) {

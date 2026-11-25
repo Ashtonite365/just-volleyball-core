@@ -45,7 +45,7 @@ func run(driver: Node) -> void:
 	d = driver
 	await d.wait(1.2)
 	var a := api()
-	d.check(a != null and a.get_api_version() == "1.3.0", "CORE API 1.3.0")
+	d.check(a != null and a.get_api_version() == "1.4.0", "CORE API 1.4.0")
 	if a == null: return
 	var cap_ids: Array = a.get_capabilities().map(func(c): return c["id"])
 	d.check("gameplay.settings" in cap_ids and "gameplay.settings_sync" in cap_ids and "game.rules" in cap_ids, "capabilities gameplay.settings / gameplay.settings_sync / game.rules present")

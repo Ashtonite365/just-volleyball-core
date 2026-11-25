@@ -9,7 +9,7 @@
 
 namespace jvm::api {
 
-constexpr int kVersionMajor = 1, kVersionMinor = 3, kVersionPatch = 0;
+constexpr int kVersionMajor = 1, kVersionMinor = 4, kVersionPatch = 0;
 std::string version_string();
 
 enum class Access { Read, LocalUi, Cosmetic, Gameplay, Sync, Offline };

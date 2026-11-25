@@ -1,5 +1,6 @@
 #include <functional>
 #include <set>
+#include "safe_load.hpp"
 #include "texture_loader.hpp"
 #include "../common/jv_prof.hpp"
 #include "../common/accessory_rules.hpp"
@@ -121,17 +122,12 @@ Ref<PackedScene> JVTextureLoader::pack_accessory_scene(const AccessorySpec &spec
 	auto it = acc_scenes_.find(S(id));
 	if (it != acc_scenes_.end() && it->second.path == spec.model_path && it->second.scene.is_valid())
 		return it->second.scene;
-	Ref<GLTFDocument> doc;
-	doc.instantiate();
-	Ref<GLTFState> state;
-	state.instantiate();
-	Error err = doc->append_from_file(spec.model_path, state, 0, spec.model_path.get_base_dir());
-	if (err != OK) {
-		jvm::warn("textures", "locker accessory GLTF load failed (" + String::num_int64(err) + ") for " + spec.model_path);
+	String why;
+	Node *gen = jvm::safe::load_glb(spec.model_path, why);
+	if (!gen) {
+		jvm::safe::note_refusal("locker accessory mesh " + spec.model_path + ": " + why);
 		return Ref<PackedScene>();
 	}
-	Node *gen = doc->generate_scene(state);
-	if (!gen) return Ref<PackedScene>();
 	Node3D *root = Object::cast_to<Node3D>(gen);
 	if (!root) {
 		root = memnew(Node3D);

@@ -1,13 +1,26 @@
 {
-  "_comment": "Supported game builds. All mod libraries (textures included) refuse to load unless one pin matches. Add a new entry for a new game build after re-checking the game scripts. Hashes are lowercase SHA256.",
+  "_comment": "Approved game versions. All mod libraries (textures included) refuse to load unless GameConfig.VERSION (the title/menu \"v%s\" label) is in `versions` or a pin's `version`. Steam buildid and pck/exe hashes are recorded in logs and status only. Old pins.json files with no version field still match by pck hash/size. Hashes are lowercase SHA256.",
+  "versions": ["1.0.4.2"],
   "pins": [
     {
       "name": "steam-26924091",
-      "_note": "v1.0.4 (25 Nov 2026 patch; pck changed, exe unchanged). Scripts re-checked for this build: player consts, API refs, gate probes.",
+      "version": "1.0.4.2",
+      "_note": "v1.0.4.2 (25 Nov 2026 patch; pck changed, exe unchanged). Scripts re-checked for this build: player consts, API refs, gate probes.",
       "steam_buildid": "26924091",
       "engine": "4.7.1-stable (custom_build)",
       "pck_size": 171181116,
       "pck_sha256": "5696c7cc027ee370cbaa737a9bb3b4d7d37b48195592f7fb1f24c921c7810f46",
+      "exe_size": 85303808,
+      "exe_sha256": "224a5ea56536081b84369a0e90590a688a8510fefcc24ab84af1a31b3e052435"
+    },
+    {
+      "name": "steam-26929702",
+      "version": "1.0.4.2",
+      "_note": "v1.0.4.2 (26 Nov 2026 patch; exe unchanged). Only game/ui/awards_page.gdc changed: Steam achievement tabs filter to defs with a steam id. Player, ball, net, menu, main, game_config (VERSION still 1.0.4.2), API refs and gate probes unchanged.",
+      "steam_buildid": "26929702",
+      "engine": "4.7.1-stable (custom_build)",
+      "pck_size": 171181276,
+      "pck_sha256": "5393cffeb8b0a8b8dba47ff586ec7ede07f33ed5345f6b42c12cebe32ee287c0",
       "exe_size": 85303808,
       "exe_sha256": "224a5ea56536081b84369a0e90590a688a8510fefcc24ab84af1a31b3e052435"
     }

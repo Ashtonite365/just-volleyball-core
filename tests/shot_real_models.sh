@@ -13,7 +13,7 @@ cp -r "$HERE/dist/game_dir/." "$R/"; cp "$HERE"/bin/windows/*.dll "$R/mods/bin/"
 x86_64-w64-mingw32-objdump -p "$R/volleyball.exe" | awk '/DLL Name: steam_api64.dll/{f=1;next} /DLL Name:/{f=0} f && $NF ~ /^Steam/ {print $NF}' | sort -u |
   python3 -c "import sys; print('#include <stdint.h>'); [print('__declspec(dllexport) intptr_t %s(void){return %s;}' % (n, '1' if n in ('SteamInternal_SteamAPI_Init','SteamAPI_InitFlat') else '0')) for n in sys.stdin.read().split()]" > "$R/stub.c"
 x86_64-w64-mingw32-gcc -shared -O1 -w -o "$R/steam_api64.dll" "$R/stub.c"
-P="$R/mods/models"
+P="$R/mods/${JV_MODEL_ROOT:-resources/packs}"
 pack() {
   mkdir -p "$P/$1"; cp "$3" "$P/$1/"
   echo "{\"kind\":\"model\",\"id\":\"$2\",\"name\":\"$1\",\"model\":\"$(basename "$3")\"$4}" > "$P/$1/skin.json"

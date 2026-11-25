@@ -9,5 +9,8 @@ namespace jvm {
 
 
 
+
+
+
 godot::Dictionary verify_game_version();
 }

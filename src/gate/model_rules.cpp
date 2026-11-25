@@ -65,7 +65,7 @@ ParseResult parse_manifest(const RawManifest &m) {
 	else s.id = *id;
 	s.name = m.name;
 	for (auto &k : m.bad_types) r.warnings.push_back("'" + k + "' has the wrong type (ignored, default used)");
-	if (m.model.empty()) r.errors.push_back("missing \"model\" (path to a .glb/.gltf/.tscn/.scn inside the pack)");
+	if (m.model.empty()) r.errors.push_back("missing \"model\" (path to a .glb inside the pack)");
 	else {
 		auto p = safe_relpath(m.model);
 		if (!p) r.errors.push_back("\"model\" path '" + m.model + "' must stay inside the pack folder (no '..', drive letters or res://)");
@@ -74,14 +74,14 @@ ParseResult parse_manifest(const RawManifest &m) {
 			size_t dot = p->find_last_of('.');
 			size_t slash = p->find_last_of('/');
 			if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = lower(p->substr(dot + 1));
-			if (ext != "glb" && ext != "gltf" && ext != "tscn" && ext != "scn")
-				r.errors.push_back("\"model\" '" + m.model + "' must be .glb, .gltf, .tscn or .scn");
+			if (ext != "glb")
+				r.errors.push_back("\"model\" '" + m.model + "' must be a self-contained .glb (packs are data only: no .gltf/.tscn/.scn scenes or scripts)");
 			s.model = *p;
 			s.ext = ext;
 		}
 	}
 	if (m.hide_base) s.hide_base = *m.hide_base;
-	if (m.allow_scripts) s.allow_scripts = *m.allow_scripts;
+	if (m.allow_scripts && *m.allow_scripts) r.warnings.push_back("\"allow_scripts\" ignored: packs are data only and never run scripts");
 	if (m.flash) s.flash = *m.flash;
 	if (m.color) {
 		if (parse_color(*m.color, s.color)) { s.has_color = true; s.tint = Tint::None; }

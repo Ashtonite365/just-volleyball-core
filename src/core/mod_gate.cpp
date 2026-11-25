@@ -114,7 +114,7 @@ void JVModGate::_ready() {
 	reload_config();
 	ensure_ui();
 	if (!pin_ok_) {
-		banner_->set_text("just volleyball mods disabled: game version changed (expected build " + String(pin_.get("expected_build", "?")) +
+		banner_->set_text("just volleyball mods disabled: game version changed (expected " + String(pin_.get("expected_build", "?")) +
 				", found " + String(pin_.get("found", "?")) + "). Update the mods.");
 		banner_->set_visible(true);
 		banner_t_ = 20.0;

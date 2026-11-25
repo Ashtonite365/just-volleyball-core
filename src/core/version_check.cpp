@@ -1,4 +1,5 @@
 #include "version_check.hpp"
+#include "player_consts_boot.hpp"
 #include "../common/jvm_common.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
@@ -7,7 +8,10 @@
 #include <godot_cpp/classes/hashing_context.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/time.hpp>
+#include <cstring>
+#include <vector>
 
 using namespace godot;
 
@@ -40,6 +44,62 @@ static String cached_sha(const String &path, int64_t size, Dictionary &cache, bo
 	return h;
 }
 
+
+
+
+
+
+static std::string version_from_gdc(const PackedByteArray &gdc) {
+	if (gdc.size() < 12 || gdc[0] != 'G' || gdc[1] != 'D' || gdc[2] != 'S' || gdc[3] != 'C') return "";
+	const uint8_t *p = gdc.ptr();
+	uint32_t ver, dsize;
+	std::memcpy(&ver, p + 4, 4);
+	std::memcpy(&dsize, p + 8, 4);
+	if (ver != 100 && ver != 101) return "";
+	PackedByteArray body = gdc.slice(12);
+	PackedByteArray raw = dsize ? body.decompress(dsize, FileAccess::COMPRESSION_ZSTD) : body;
+	if (int64_t(raw.size()) != int64_t(dsize ? dsize : body.size())) return "";
+	std::vector<uint8_t> c(raw.ptr(), raw.ptr() + raw.size());
+	jvm::gdc::Buffer b;
+	std::string why;
+	if (!jvm::gdc::parse(c, ver, b, why)) return "";
+	return jvm::gdc::named_const_string(b, "VERSION");
+}
+
+static void try_path(const String &path, std::string &out) {
+	if (!out.empty() || path.is_empty() || !FileAccess::file_exists(path)) return;
+	PackedByteArray bytes = FileAccess::get_file_as_bytes(path);
+	if (bytes.size() >= 4 && bytes[0] == 'G' && bytes[1] == 'D' && bytes[2] == 'S' && bytes[3] == 'C') {
+		out = version_from_gdc(bytes);
+		return;
+	}
+	if (bytes.size() == 0) return;
+	out = pin::parse_source_const_string(S(FileAccess::get_file_as_string(path)), "VERSION");
+}
+
+static std::string read_game_version() {
+	Engine *e = Engine::get_singleton();
+	if (e && e->has_singleton("GameConfig")) {
+		Object *gc = e->get_singleton("GameConfig");
+		if (gc) {
+			Variant v = gc->get("VERSION");
+			if (v.get_type() == Variant::STRING && !String(v).is_empty()) return S(String(v));
+		}
+	}
+	std::string out;
+	try_path("res://game/core/game_config.gdc", out);
+	try_path("res://game/core/game_config.gd", out);
+	if (ProjectSettings::get_singleton()) {
+		String al = ProjectSettings::get_singleton()->get_setting("autoload/GameConfig", "");
+		if (al.begins_with("*")) al = al.substr(1);
+		if (al.begins_with("res://")) {
+			try_path(al, out);
+			if (al.ends_with(".gd")) try_path(al.substr(0, al.length() - 3) + String(".gdc"), out);
+		}
+	}
+	return out;
+}
+
 Dictionary verify_game_version() {
 	OS *os = OS::get_singleton();
 	const bool dbg = os->is_debug_build();
@@ -55,6 +115,7 @@ Dictionary verify_game_version() {
 	const uint64_t t0 = Time::get_singleton()->get_ticks_msec();
 
 	pin::Observed ob;
+	ob.game_version = read_game_version();
 	ob.engine = S(String(Engine::get_singleton()->get_version_info().get("string", "")));
 	Dictionary cache;
 	Variant cv = load_json("user://jv_mods/pin_cache.json");
@@ -81,25 +142,34 @@ Dictionary verify_game_version() {
 		if (w.is_valid()) w->store_string(JSON::stringify(cache, "  "));
 	}
 
-	std::vector<pin::Pin> pins;
+	pin::PinFile file;
 	Variant pv = load_json(pins_path);
 	if (pv.get_type() == Variant::DICTIONARY) {
-		Array arr = Dictionary(pv).get("pins", Array());
+		Dictionary root = pv;
+		Array vers = root.get("versions", Array());
+		for (int i = 0; i < vers.size(); i++) {
+			String v = vers[i];
+			if (!v.is_empty()) file.versions.push_back(S(v));
+		}
+		Array arr = root.get("pins", Array());
 		for (int i = 0; i < arr.size(); i++) {
 			if (arr[i].get_type() != Variant::DICTIONARY) continue;
 			Dictionary d = arr[i];
 			pin::Pin p;
 			p.name = S(String(d.get("name", "pin")));
+			String ver = d.get("version", String());
+			if (ver.is_empty()) ver = d.get("game_version", String());
+			p.version = S(ver);
 			p.steam_buildid = S(String(d.get("steam_buildid", "")));
 			p.engine = S(String(d.get("engine", "")));
 			p.pck_size = int64_t(d.get("pck_size", -1));
 			p.pck_sha256 = S(String(d.get("pck_sha256", "")));
 			p.exe_size = int64_t(d.get("exe_size", -1));
 			p.exe_sha256 = S(String(d.get("exe_sha256", "")));
-			pins.push_back(p);
+			file.pins.push_back(p);
 		}
 	}
-	pin::Result r = pin::match_pins(pins, ob);
+	pin::Result r = pin::match_pins(file, ob);
 	const uint64_t ms = Time::get_singleton()->get_ticks_msec() - t0;
 
 	Dictionary out;
@@ -108,6 +178,7 @@ Dictionary verify_game_version() {
 	out["reason"] = String(r.reason.c_str());
 	out["found"] = String(r.found.c_str());
 	out["expected_build"] = String(r.expected_build.c_str());
+	out["game_version"] = String(ob.game_version.c_str());
 	out["engine"] = String(ob.engine.c_str());
 	out["pck_path"] = pck;
 	out["pck_size"] = ob.pck_size;

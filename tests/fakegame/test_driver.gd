@@ -48,6 +48,12 @@ var _rally = null
 var fails := 0
 var passes := 0
 var mode := OS.get_environment("JV_TEST_MODE")
+
+func _alb(m: Material) -> Color:
+	if m is ShaderMaterial: return (m as ShaderMaterial).get_shader_parameter("albedo")
+	if m is BaseMaterial3D: return (m as BaseMaterial3D).albedo_color
+	return Color(-1, -1, -1)
+
 func check(c: bool, what: String) -> void:
 	if c: passes += 1; print("PASS ", what)
 	else: fails += 1; print("FAIL ", what)
@@ -865,7 +871,7 @@ func save_spin_shot(tag: String, sd: Dictionary) -> String:
 	_plot_line(img, to2.call(Vector3(-4.5, 0, 0)), to2.call(Vector3(4.5, 0, 0)), Color(0.35, 0.35, 0.45))
 	var full: bool = str(sd.get("style", "")) == "full"
 	var col := Color(0.35, 0.95, 1.0, clampf(float(sd.get("fade", 1)), 0.15, 1.0)) if full else Color(0.62, 0.62, 0.62, 0.45)
-	var pts: Array = sd.get("points", [])
+	var pts: Array = sd.get("points", []) if bool(sd.get("path", false)) else []
 	for i in range(maxi(pts.size() - 1, 0)):
 		_plot_line(img, to2.call(pts[i]), to2.call(pts[i + 1]), col)
 		_plot_line(img, to2.call(pts[i]) + Vector2(1, 0), to2.call(pts[i + 1]) + Vector2(1, 0), col)
@@ -896,6 +902,10 @@ func _curve_apply(d: Dictionary, me: Player, other: Player) -> void:
 	var mine := (mode == "curvehost" and who == "host") or (mode == "curveclient" and who == "client")
 	gball.hit_by = me if mine else other
 	gball.strike_source = gball.hit_by
+	if d.has("aim"):
+		var am: Array = d.get("aim", [0, 0, 0])
+		var ap := Vector3(float(am[0]), float(am[1]), float(am[2]))
+		(me if mine else other).aim_point = ap
 
 func _curve_display_net() -> void:
 	var host := mode == "curvehost"
@@ -948,7 +958,8 @@ func _curve_display_net() -> void:
 		gball.strike_seq += 1
 		gball.hit_by = me
 		gball.strike_source = me
-		_curve_send({"kind": "spin", "pos": [0, 2.5, 4], "vel": [1.2, 6.5, -8.5], "curve": 9.0, "seq": gball.strike_seq, "hitter": "host"})
+		me.aim_point = Vector3(0, 0, -5)
+		_curve_send({"kind": "spin", "pos": [0, 2.5, 4], "vel": [1.2, 6.5, -8.5], "curve": 9.0, "seq": gball.strike_seq, "hitter": "host", "aim": [0, 0, -5]})
 	else:
 		var got := false
 		var t1 := Time.get_ticks_msec()
@@ -966,8 +977,8 @@ func _curve_display_net() -> void:
 			"curvehost: hitter sees the full question display (%s)" % str(sd))
 		save_spin_shot("hitter-host-full", sd)
 	else:
-		check(bool(sd.get("on")) and sd.get("local") == false and str(sd.get("style")) == "grey" and bool(sd.get("question")) and not bool(sd.get("shimmer")) and not bool(sd.get("shake")),
-			"curveclient: other (incl. this client) sees greyed path + ? (%s)" % str(sd))
+		check(bool(sd.get("on")) and sd.get("local") == false and str(sd.get("style")) == "grey" and bool(sd.get("question")) and not bool(sd.get("path")) and not bool(sd.get("path_visible", true)),
+			"curveclient: other sees the landing box + ?, no path (%s)" % str(sd))
 		save_spin_shot("remote-client-grey", sd)
 
 	if host:
@@ -989,12 +1000,13 @@ func _curve_display_net() -> void:
 		gball.strike_seq += 1
 		gball.hit_by = me
 		gball.strike_source = me
-		_curve_send({"kind": "spin", "pos": [0.4, 2.4, -3.5], "vel": [-1.0, 6.2, 8.2], "curve": -8.5, "seq": gball.strike_seq, "hitter": "client"})
+		me.aim_point = Vector3(0, 0, 5)
+		_curve_send({"kind": "spin", "pos": [0.4, 2.4, -3.5], "vel": [-1.0, 6.2, 8.2], "curve": -8.5, "seq": gball.strike_seq, "hitter": "client", "aim": [0, 0, 5]})
 	for i in 8: await get_tree().physics_frame
 	var sd2: Dictionary = sh.get_spin_display()
 	if host:
-		check(bool(sd2.get("on")) and sd2.get("local") == false and str(sd2.get("style")) == "grey" and bool(sd2.get("question")) and not bool(sd2.get("shimmer")),
-			"curvehost: host sees grey when the client is the hitter (%s)" % str(sd2))
+		check(bool(sd2.get("on")) and sd2.get("local") == false and str(sd2.get("style")) == "grey" and bool(sd2.get("question")) and not bool(sd2.get("path")) and not bool(sd2.get("path_visible", true)),
+			"curvehost: host sees the landing box + ?, no path, when the client is the hitter (%s)" % str(sd2))
 		save_spin_shot("remote-host-grey", sd2)
 		await wait(2.0)
 	else:
@@ -1310,15 +1322,24 @@ func _gameplay() -> void:
 	check(Vector2(qpos.x - land.x, qpos.z - land.z).length() >= 0.25 and not lp.visible,
 		"marker: the ? sits off the exact landing and the exact ring is hidden (? %s, landing %s, hidden %s)" % [qpos, land, not lp.visible])
 
-	gball.frozen = true; gball.global_position = bpos; gball.vel = Vector3(1.2, 6.5, -8.5); gball.curve = 9.0
-	gball.hit_by = mate; gball.strike_source = mate; gball.strike_seq += 1; gball.float_serve = false
-	gball.frozen = false
+
+	mate.aim_point = me.aim_point
+	gball.hit_by = mate; gball.strike_source = mate
 	await get_tree().physics_frame; await get_tree().physics_frame; await get_tree().physics_frame
 	var rsd: Dictionary = sh.get_spin_display()
 	var rland: Vector3 = gball._predict_land_curved()
 	var rq: Vector3 = rsd.get("question_pos", Vector3.ZERO)
-	check(bool(rsd.get("on")) and rsd.get("local") == false and str(rsd.get("style")) == "grey" and bool(rsd.get("question")) and bool(rsd.get("path")) and not bool(rsd.get("shimmer")) and not bool(rsd.get("shake")) and Vector2(rq.x - rland.x, rq.z - rland.z).length() >= 0.25,
-		"marker: a remote curve shot is greyed, no shimmer/shake, ? off the landing (%s, land %s)" % [str(rsd), rland])
+	var b0: Vector3 = rsd.get("box_start", Vector3.ZERO)
+	var b1: Vector3 = rsd.get("box_end", Vector3.ZERO)
+	var aim0: Vector3 = me.aim_point
+	var far0: Vector3 = sp.get("path_end", Vector3.ZERO)
+	check(bool(rsd.get("on")) and rsd.get("local") == false and str(rsd.get("style")) == "grey" and bool(rsd.get("question")) and not bool(rsd.get("path")) and not bool(rsd.get("path_visible", true)) and bool(rsd.get("box")),
+		"marker: a remote curve shot has no path, only the uncertainty box + ? (%s, land %s)" % [str(rsd), rland])
+	check(Vector2(rq.x - rland.x, rq.z - rland.z).length() < 0.5,
+		"marker: remote ? stays near the true landing (? %s, land %s)" % [rq, rland])
+	check(Vector2(b0.x - aim0.x, b0.z - aim0.z).length() < 0.35 and Vector2(b1.x - far0.x, b1.z - far0.z).length() < 0.6,
+		"marker: remote box spans the crosshair to the max landing (box %s -> %s, aim %s, far %s)" % [b0, b1, aim0, far0])
+	check(lp.visible, "marker: remote uncertainty box is the game's own landing-marker nodes (visible)")
 
 	gball.frozen = true; gball.global_position = bpos; gball.vel = Vector3.ZERO; gball.curve = 0.0; gball.hit_by = me; gball.strike_source = me
 	me.airborne = true; hold(["move_right"]); await touch(me, 3, 0.8); hold([]); me.airborne = false
@@ -2206,10 +2227,28 @@ func base_visible(rig: ModelRig) -> bool:
 func gmat(g: Node) -> Material:
 	var mi := g as MeshInstance3D
 	return mi.material_override if mi.material_override else mi.get_surface_override_material(0)
+
+
+func mroot_rel() -> String:
+	var r := OS.get_environment("JV_MODEL_ROOT")
+	return r if r != "" else "models"
+func merged_layout() -> bool: return mroot_rel() != "models"
+func mroot() -> String: return OS.get_environment("JV_MODS_DIR").path_join(mroot_rel())
 func equip(model: String, extra := []) -> void:
-	var root := OS.get_environment("JV_MODS_DIR").path_join("models")
-	var f := FileAccess.open(root.path_join("equipped.json"), FileAccess.WRITE)
-	f.store_string(JSON.stringify({"equipped": extra, "model": model})); f.close()
+	var path := mroot().path_join("equipped.json")
+	var d := {"equipped": extra, "model": model}
+	if merged_layout():
+		var old = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+		d = old if old is Dictionary else {}
+		d["model"] = model
+		if not extra.is_empty(): d["equipped"] = extra
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(d)); f.close()
+	if not merged_layout():
+		var mp := OS.get_environment("JV_MODS_DIR").path_join("resources/packs/equipped.json")
+		var md = JSON.parse_string(FileAccess.get_file_as_string(mp)) if FileAccess.file_exists(mp) else null
+		if md is Dictionary and md.has("model"):
+			md.erase("model"); var g := FileAccess.open(mp, FileAccess.WRITE); g.store_string(JSON.stringify(md)); g.close()
 	ml().reload_config()
 	await frame(); await frame(); await frame()
 func log_text() -> String: return FileAccess.get_file_as_string("user://jv_mods/jv_mods.log")
@@ -2279,24 +2318,16 @@ func _models() -> void:
 
 	await equip("AE02")
 	g = grafts(rig)
-	check(g.size() == 1, "AE02 (.tscn) grafted")
-	if g.size() == 1:
-		var sm := gmat(g[0]) as ShaderMaterial
-		check(sm != null and sm.shader != null and sm.shader.resource_path.ends_with("aero tscn/shaders/tint.gdshader"), "relative ext_resource shader resolved from the pack folder (%s)" % (sm.shader.resource_path if sm and sm.shader else "null"))
-		var own_a: Variant = sm.get_shader_parameter("albedo")
-		var own_s: Variant = sm.get_shader_parameter("sss_tint")
-		rig.set_slot_color("jersey", Color(0, 0, 1)); await frame(); await frame()
-		check(sm.get_shader_parameter("albedo") == own_a and (own_a == null or not (own_a as Color).is_equal_approx(Color(0, 0, 1))), "team tint disabled: shader uniform 'albedo' keeps the model's own colour (%s)" % own_a)
-		check(sm.get_shader_parameter("sss_tint") == own_s, "team tint disabled: tint_light sss_tint untouched (%s)" % sm.get_shader_parameter("sss_tint"))
-		rig.set_flash(Color(1, 1, 0), 0.75); await frame(); await frame()
-		check(is_equal_approx(sm.get_shader_parameter("flash"), 0.75), "game hit flash mirrored to the model shader")
+	check(g.size() == 1, "AE02 (second .glb) grafted")
 	check(grafts(remote).is_empty(), "remote still vanilla after reload")
 
 	await equip("F1C0")
 	g = grafts(rig)
 	check(g.size() == 1 and (gmat(g[0]) as StandardMaterial3D).albedo_color.is_equal_approx(Color("#FF1A8C")), "\"color\" pack: fixed colour, no team tint")
 
-	for c in [["BAD1", "cannot read glTF"], ["B0E5", "skeleton mismatch"], ["5C01", "contains scripts"], ["4155", "file not found"], ["E5C0", "invalid skin.json"], ["5C1A", "not a model pack"], ["CAFE", "not installed"], ["0000", "not installed"]]:
+	var why_cases := [["BAD1", "cannot read"], ["B0E5", "skeleton mismatch"], ["5C01", "self-contained .glb"], ["5C02", "self-contained .glb"], ["AE03", "self-contained .glb"], ["E7B0", "has a uri"], ["4155", "file not found"], ["E5C0", "invalid skin.json"], ["CAFE", "not installed"], ["0000", "not installed"]]
+	if not merged_layout(): why_cases.append(["5C1A", "not a model pack"])
+	for c in why_cases:
 		await equip(c[0])
 		var s2 := mstatus()
 		var txt := str(s2.get("model")) + " " + str(s2.get("last_error", "")) + " " + "\n".join(s2.get("warnings", [])) + " " + str(ml().get_rig_report())
@@ -2304,9 +2335,8 @@ func _models() -> void:
 		check(txt.find(c[1]) != -1 or log_text().find(c[1]) != -1, "%s: reason reported ('%s')" % [c[0], c[1]])
 	check(log_text().find("[jv-mods:models]") != -1, "jv_mods.log has [jv-mods:models] lines")
 
-	await equip("5C02")
-	g = grafts(rig)
-	check(g.size() == 1 and g[0].has_meta("jvm_script_ran"), "allow_scripts pack: graft keeps its script and it ran")
+	check(int(Engine.get_meta("jvm_pwned", 0)) == 0, "GLB with an external image URI to evil.tres: refused, canary never ran")
+	check(not get_tree().root.has_meta("jvm_script_ran") and not log_text().contains("JVM_SCRIPT_RAN"), "allow_scripts pack: refused, its script never ran")
 
 	await equip("AE01")
 	var seen := _other_seen
@@ -2380,9 +2410,49 @@ func _wjson(path: String, v) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE); f.store_string(JSON.stringify(v)); f.close()
 func _treload() -> void:
 	tl().reload_config(); await frame(); await frame(); await frame()
+
+func _weq(T: String, ids: Array) -> void:
+	var p := T.path_join("equipped.json")
+	var old = JSON.parse_string(FileAccess.get_file_as_string(p)) if FileAccess.file_exists(p) else null
+	var d: Dictionary = old if old is Dictionary else {}
+	d["equipped"] = ids
+	_wjson(p, d)
+
+
+
+func _merged_folder_checks(rig: ModelRig, M: String, T: String) -> void:
+	check(tl().pack_info("AE01").is_empty() and tl().pack_info("AE02").is_empty() and not tl().pack_info("CAFE").is_empty(), "merged: model packs in resources/packs are not texture packs")
+	check(not tl().get_sync_status().get("equipped", []).has("AE02"), "merged: model id never sent as a skin")
+	check(mstatus().get("legacy_models_folder") == false and mstatus().get("content_folder") == "resources/packs", "merged: status reports the one folder")
+	var eq = JSON.parse_string(FileAccess.get_file_as_string(T.path_join("equipped.json")))
+	check(eq is Dictionary and eq.get("model") == "AE01" and Array(eq.get("equipped", [])).has("CAFE"), "merged: equipped.json keeps skins + model pick together (%s)" % str(eq))
+
+	var OM := M.path_join("models")
+	_cp_dir(T.path_join("aero glb"), OM.path_join("aero glb"))
+	_cp_dir(T.path_join("aero glb"), OM.path_join("old only"))
+	var sj = JSON.parse_string(FileAccess.get_file_as_string(OM.path_join("old only/skin.json")))
+	sj["id"] = "AE0D"; sj["name"] = "old folder bean"; _wjson(OM.path_join("old only/skin.json"), sj)
+	await equip("AE0D")
+	check(grafts(rig).size() == 1 and str(mstatus().get("model", "")).begins_with("ready: AE0D") and mstatus().get("legacy_models_folder") == true, "merged: pack only in the old mods/models still worn (%s)" % mstatus().get("model"))
+	await equip("AE01")
+	var e: Dictionary = mstatus().get("equipped", {}) if mstatus().get("equipped") is Dictionary else {}
+	check(grafts(rig).size() == 1 and e.get("pack") == "aero glb", "merged: same id in both folders -> the resources/packs copy (%s)" % str(e.get("pack")))
+
+	_wjson(OM.path_join("equipped.json"), {"model": "AE0D"})
+	ml().reload_config(); await frame(); await frame(); await frame()
+	check(str(mstatus().get("model", "")).begins_with("ready: AE01"), "merged: merged pick wins over models/equipped.json")
+	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(T.path_join("equipped.json")))
+	d.erase("model"); _wjson(T.path_join("equipped.json"), d)
+	ml().reload_config(); await frame(); await frame(); await frame()
+	check(str(mstatus().get("model", "")).begins_with("ready: AE0D"), "merged: no pick in resources/packs -> old models/equipped.json read (fallback)")
+	_rm_dir(OM)
+	await equip("AE01")
+	check(grafts(rig).size() == 1 and mstatus().get("legacy_models_folder") == false, "merged: old folder removed, merged pick still worn")
+	check(tl().get_swapped_count() == 1 and tl().get_sync_status().get("equipped", []).has("CAFE"), "merged: textures unaffected by the model checks")
+
 func _folders(rig: ModelRig) -> void:
 	var M := OS.get_environment("JV_MODS_DIR")
-	var MD := M.path_join("models"); var T := M.path_join("resources/packs")
+	var MD := mroot(); var T := M.path_join("resources/packs")
 
 	_cp_dir(MD.path_join("aero glb"), MD.path_join("aero copy renamed"))
 	var sj = JSON.parse_string(FileAccess.get_file_as_string(MD.path_join("aero copy renamed/skin.json")))
@@ -2396,33 +2466,43 @@ func _folders(rig: ModelRig) -> void:
 	check(grafts(rig).is_empty() and base_visible(rig), "models: equipped folder deleted -> game's own model, no crash")
 
 	DirAccess.rename_absolute(M.path_join("resources"), M.path_join("resources_off")); await _treload()
-	await equip("AE01")
-	check(grafts(rig).size() == 1, "models: work with mods/resources missing")
+	if merged_layout():
+		ml().reload_config(); await frame(); await frame(); await frame()
+		check(grafts(rig).is_empty() and base_visible(rig), "models (merged): mods/resources missing -> game's model, no crash")
+	else:
+		await equip("AE01")
+		check(grafts(rig).size() == 1, "models: work with mods/resources missing")
 	check(int(tl().get_status().get("packs", -1)) == 0 and tl().get_swapped_count() == 0, "textures: folder missing -> 0 packs, vanilla, no crash")
 
 	DirAccess.rename_absolute(M.path_join("resources_off/packs"), M.path_join("resource packs")); await _treload()
 	check(int(tl().get_status().get("packs", 0)) >= 2 and tl().get_swapped_count() == 1, "textures: old 'mods/resource packs' read as fallback (%s)" % str(tl().get_status().get("packs")))
 	DirAccess.rename_absolute(M.path_join("resource packs"), M.path_join("resources_off/packs"))
 	DirAccess.rename_absolute(M.path_join("resources_off"), M.path_join("resources")); await _treload()
+	if merged_layout():
+		await equip("AE01")
+		check(grafts(rig).size() == 1, "models (merged): back with mods/resources")
 	var n0 := int(tl().get_status().get("packs", 0))
 	check(n0 >= 2 and tl().get_swapped_count() == 1, "textures: back in resources/packs (%d packs)" % n0)
 
 	_cp_dir(T.path_join("cafe skin pack"), T.path_join("cafe renamed"))
 	_wjson(T.path_join("cafe renamed/skin.json"), {"id": "C0FE", "name": "cafe renamed", "kind": "skin"})
-	_wjson(T.path_join("equipped.json"), {"equipped": ["CAFE", "C0FE"]}); await _treload()
+	_weq(T, ["CAFE", "C0FE"]); await _treload()
 	check(int(tl().get_status().get("packs", 0)) == n0 + 1 and tl().get_sync_status().get("equipped", []).has("C0FE"), "textures: new folder found at runtime and equippable")
 	DirAccess.rename_absolute(T.path_join("ballpack"), M.path_join("ballpack_off")); DirAccess.rename_absolute(T.path_join("dupe"), M.path_join("dupe_off")); _rm_dir(T.path_join("cafe renamed")); await _treload()
 	check(tl().get_swapped_count() == 0 and not tl().get_sync_status().get("equipped", []).has("C0FE"), "textures: removed packs -> vanilla ball, missing equipped id skipped (swaps %d, eq %s, dirs %s)" % [tl().get_swapped_count(), str(tl().get_sync_status().get("equipped")), str(DirAccess.get_directories_at(T))])
 	DirAccess.rename_absolute(M.path_join("ballpack_off"), T.path_join("ballpack"))
 	DirAccess.rename_absolute(M.path_join("dupe_off"), T.path_join("dupe"))
-	_wjson(T.path_join("equipped.json"), {"equipped": ["CAFE"]}); await _treload()
+	_weq(T, ["CAFE"]); await _treload()
 	check(tl().get_swapped_count() == 1, "textures: pack restored")
+	if merged_layout():
+		await _merged_folder_checks(rig, M, T)
+	else:
 
-	DirAccess.rename_absolute(MD, M.path_join("models_off")); ml().reload_config(); await frame(); await frame(); await frame()
-	check(grafts(rig).is_empty() and base_visible(rig) and tl().get_swapped_count() == 1, "mods/models missing -> game's model; textures unaffected")
-	DirAccess.rename_absolute(M.path_join("models_off"), MD)
-	await equip("AE01")
-	check(grafts(rig).size() == 1, "models folder restored")
+		DirAccess.rename_absolute(MD, M.path_join("models_off")); ml().reload_config(); await frame(); await frame(); await frame()
+		check(grafts(rig).is_empty() and base_visible(rig) and tl().get_swapped_count() == 1, "mods/models missing -> game's model; textures unaffected")
+		DirAccess.rename_absolute(M.path_join("models_off"), MD)
+		await equip("AE01")
+		check(grafts(rig).size() == 1, "models folder restored")
 	await _accessory_split()
 
 	var lkacc: Control = load("res://game/character/locker.gd").new(); lkacc.name = "LockerAcc"; add_child(lkacc)
@@ -2444,11 +2524,12 @@ func _find(n: Node, pred: Callable) -> Array:
 func _btn(root: Node, text: String) -> Button:
 	var a := _find(root, func(c): return c is Button and (c as Button).text == text)
 	return a[0] if a.size() else null
+func cfolder() -> String: return OS.get_environment("JV_MODS_DIR").path_join("resources/packs")
 func _equipped_model() -> String:
-	var v = JSON.parse_string(FileAccess.get_file_as_string(OS.get_environment("JV_MODS_DIR").path_join("models/equipped.json")))
+	var v = JSON.parse_string(FileAccess.get_file_as_string(cfolder().path_join("equipped.json")))
 	return str(v.get("model", "")) if v is Dictionary else "?"
 func _settings_file() -> Dictionary:
-	var v = JSON.parse_string(FileAccess.get_file_as_string(OS.get_environment("JV_MODS_DIR").path_join("models/model_settings.json")))
+	var v = JSON.parse_string(FileAccess.get_file_as_string(cfolder().path_join("model_settings.json")))
 	return v.get("models", {}) if v is Dictionary else {}
 func _seat_of(n: Node) -> Node:
 	var p := n.get_parent()
@@ -2665,7 +2746,7 @@ func _locker_tab() -> void:
 	lk.cycle_section(1); await frame(); lk.cycle_section(-1); await frame(); await frame()
 	check(lk._section == "jvm_full_model" and lk._content.get_node_or_null("JvmFullModel") != null, "controller cycle back onto the tab rebuilds the page")
 	page = lk._content.get_node_or_null("JvmFullModel")
-	check(_btn(page, "none (vanilla)") != null and _btn(page, "bean glb") != null and _btn(page, "bean tscn") != null, "page lists none (vanilla) + the model packs")
+	check(_btn(page, "none (vanilla)") != null and _btn(page, "bean glb") != null and _btn(page, "bean two") != null, "page lists none (vanilla) + the model packs")
 	check(_btn(page, "in use") != null and _btn(page, "in use").disabled, "equipped model shows as in use")
 
 	_btn(page, "none (vanilla)").pressed.emit(); await frame(); await frame(); await frame()
@@ -2673,11 +2754,11 @@ func _locker_tab() -> void:
 	check(graft_nodes_under(lk._player).is_empty(), "preview none: ungraft frees every jvm_model node under the locker player")
 	check(not stock_body.visible, "preview none: Visual/Body placeholder stays hidden (ungraft must not force the capsule back on over vanilla)")
 	page = lk._content.get_node_or_null("JvmFullModel")
-	_btn(page, "bean tscn").pressed.emit(); await frame(); await frame(); await frame(); await wait(0.6)
-	check(grafts(lrig).size() == 1 and ml().get_shown_model() == "AE02" and _equipped_model() == "AE02" and not ml().is_previewing(), "pick bean tscn: shown on the locker preview and saved immediately")
+	_btn(page, "bean two").pressed.emit(); await frame(); await frame(); await frame(); await wait(0.6)
+	check(grafts(lrig).size() == 1 and ml().get_shown_model() == "AE02" and _equipped_model() == "AE02" and not ml().is_previewing(), "pick bean two: shown on the locker preview and saved immediately")
 	check(lk.picks >= 1, "locker's own pick gesture played")
 	var st: Dictionary = ml().get_model_settings("AE02")
-	check(st.get("default_color") == "#1ACCE6" and st.get("color") == "#1ACCE6" and not st.get("custom"), "model default colour read from the shader (%s)" % st.get("default_color"))
+	check(str(st.get("default_color", "")).begins_with("#") and st.get("color") == st.get("default_color") and not st.get("custom"), "model default colour read from the model (%s)" % st.get("default_color"))
 	page = lk._content.get_node_or_null("JvmFullModel")
 	check(_btn(page, "save this model") == null and _btn(page, "in use") != null and _btn(page, "in use").disabled, "no separate save step after a pick: shows \"in use\"")
 
@@ -2693,21 +2774,21 @@ func _locker_tab() -> void:
 	await frame(); await frame(); await frame(); await wait(0.6)
 	check(_equipped_model() == "AE01" and not ml().is_previewing(), "save this model -> equipped.json model AE01")
 	page = lk._content.get_node_or_null("JvmFullModel")
-	if page and _btn(page, "bean tscn"): _btn(page, "bean tscn").pressed.emit()
+	if page and _btn(page, "bean two"): _btn(page, "bean two").pressed.emit()
 	await frame(); await frame(); await frame(); await wait(0.6)
-	check(_equipped_model() == "AE02" and ml().get_saved_model() == "AE02", "pick bean tscn again -> equipped.json model AE02")
+	check(_equipped_model() == "AE02" and ml().get_saved_model() == "AE02", "pick bean two again -> equipped.json model AE02")
 
 	page = lk._content.get_node_or_null("JvmFullModel")
 	var sw := _find(page, func(c): return c is Button and c.has_meta("color") and (c.get_meta("color") as Color).to_html(false) == "2f6bff")
 	check(sw.size() == 1, "preset swatch row (with the model default first)")
-	var sm := gmat(grafts(lrig)[0]) as ShaderMaterial
+	var sm: Material = gmat(grafts(lrig)[0])
 	if sw.size() == 1: sw[0].pressed.emit()
 	await frame(); await frame()
-	sm = gmat(grafts(lrig)[0]) as ShaderMaterial
-	check(sm.get_shader_parameter("albedo").is_equal_approx(Color("#2f6bff")), "swatch colour -> shader albedo (%s)" % sm.get_shader_parameter("albedo"))
-	check(sm.get_shader_parameter("sss_tint").is_equal_approx(Color("#2f6bff").lerp(Color.WHITE, 0.5)), "tint_light follows the user colour")
+	sm = gmat(grafts(lrig)[0])
+	check(_alb(sm).is_equal_approx(Color("#2f6bff")), "swatch colour -> shader albedo (%s)" % _alb(sm))
+	check(not (sm is ShaderMaterial) or (sm as ShaderMaterial).get_shader_parameter("sss_tint").is_equal_approx(Color("#2f6bff").lerp(Color.WHITE, 0.5)), "tint_light follows the user colour")
 	lrig.set_slot_color("jersey", Color(1, 0, 0)); await frame(); await frame()
-	check(sm.get_shader_parameter("albedo").is_equal_approx(Color("#2f6bff")), "team colour still ignored with a user colour")
+	check(_alb(sm).is_equal_approx(Color("#2f6bff")), "team colour still ignored with a user colour")
 	await wait(0.7)
 	check(str(_settings_file().get("AE02", {}).get("color", "")) == "#2F6BFF", "colour saved to model_settings.json (%s)" % str(_settings_file()))
 
@@ -2715,13 +2796,13 @@ func _locker_tab() -> void:
 	var pick := _find(page, func(c): return c is ColorPickerButton)
 	if pick.size(): (pick[0] as ColorPickerButton).color_changed.emit(Color("#11aa33"))
 	await frame()
-	check(sm.get_shader_parameter("albedo").is_equal_approx(Color("#11aa33")), "custom colour picker applies live")
+	check(_alb(sm).is_equal_approx(Color("#11aa33")), "custom colour picker applies live")
 	var reset := _btn(page, "reset to model default")
 	check(reset != null and not reset.disabled, "reset to model default offered")
 	if reset: reset.pressed.emit()
 	await frame(); await frame(); await wait(0.3)
-	sm = gmat(grafts(lrig)[0]) as ShaderMaterial
-	check(sm.get_shader_parameter("albedo").is_equal_approx(Color(0.1, 0.8, 0.9)) and not _settings_file().get("AE02", {}).has("color"), "reset: model's own colour back, colour removed from model_settings.json")
+	sm = gmat(grafts(lrig)[0])
+	check(_alb(sm).is_equal_approx(Color(0.1, 0.8, 0.9)) and not _settings_file().get("AE02", {}).has("color"), "reset: model's own colour back, colour removed from model_settings.json")
 
 	page = lk._content.get_node_or_null("JvmFullModel")
 	var hide := _btn(page, "hide")
@@ -2778,7 +2859,7 @@ func _locker_tab() -> void:
 	await frame(); await frame()
 	check(not lk2._rail_btns.has("jvm_full_model"), "split-screen (section_mode) locker: no tab")
 	lk2.queue_free()
-	var f := FileAccess.open(OS.get_environment("JV_MODS_DIR").path_join("models/model_settings.json"), FileAccess.WRITE); f.store_string("{}"); f.close()
+	var f := FileAccess.open(cfolder().path_join("model_settings.json"), FileAccess.WRITE); f.store_string("{}"); f.close()
 	await equip("AE01")
 
 
@@ -2843,6 +2924,9 @@ func _pickers() -> void:
 	var env_ids := []
 	for pe in tl().list_picker_packs("stage"): env_ids.append(String(pe.get("id")))
 	check("10E1" in env_ids and "10E2" in env_ids, "environment fixture packs are listed (%s)" % str(env_ids))
+	check("10E5" in env_ids, "10E5 tutorial-base fixture pack is listed")
+	var e5: Dictionary = tl().pack_info("10E5")
+	check(str(e5.get("base_stage", "")) == "tutorial", "10E5 pack_info base_stage is tutorial (%s)" % str(e5.get("base_stage", "")))
 	var e1: Dictionary = tl().pack_info("10E1")
 	var e2: Dictionary = tl().pack_info("10E2")
 	check(bool(e1.get("has_environment")) and bool(e1.get("has_sky")), "10E1 pack_info exposes has_environment and has_sky")
@@ -2883,11 +2967,42 @@ func _pickers() -> void:
 	check(env_node.get_parent() == main, "JVM_CourtEnv parent is Main")
 	check(probe.find_child("JVM_CourtEnv", true, false) == env_node, "only one env instance in the single-scene case")
 
+
+
+	var env_meshes: Array = []
+	var stack: Array = [env_node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D: env_meshes.append(n)
+		for c in n.get_children(): stack.append(c)
+	check(not env_meshes.is_empty(), "10E1 spawned at least one env mesh")
+	for mi in env_meshes:
+		var mat: Material = mi.material_override
+		if mat == null: mat = mi.get_active_material(0)
+		check(mat != null, "10E1 env mesh %s has a material" % mi.name)
+		if mat is StandardMaterial3D:
+			check(mat.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and mat.render_priority == -128,
+				"10E1 env StandardMaterial3D is opaque at render_priority -128 (%s pri=%s tr=%s)" % [mi.name, mat.render_priority, mat.transparency])
+		elif mat is ShaderMaterial:
+			check(mat.render_priority == -128, "10E1 env ShaderMaterial render_priority -128 (%s pri=%s)" % [mi.name, mat.render_priority])
+		var w: AABB = mi.global_transform * mi.get_aabb()
+		var top: float = w.position.y + w.size.y
+		var lname := String(mi.name).to_lower()
+		if "floor" in lname or "ground" in lname or "deck" in lname:
+			check(top <= -0.05, "10E1 floor mesh %s top is clamped below y=0 (top=%.3f)" % [mi.name, top])
+
 	check(tl().set_picked_stage("10E2") and tl().get_picked_stage() == "10E2", "pick 10E2 environment pack")
 	tl().apply_picked_cosmetics()
 	await wait(0.05)
 	check(not hills.visible, "10E2 hide_env_props hides Hills")
 	check(ground.visible, "10E2 keeps EnvFloor visible")
+
+	check(tl().set_picked_stage("10E5") and tl().get_picked_stage() == "10E5", "pick 10E5 tutorial-base pack")
+	check(last_swap_stage == "tutorial" and _freeplay_stage == "tutorial", "10E5 restages the game kit to base_stage tutorial (freeplay=%s swap=%s)" % [_freeplay_stage, last_swap_stage])
+	tl().apply_picked_cosmetics()
+	await wait(0.05)
+	check(not hills.visible, "10E5 hide_env_props hides Hills")
+	check(not ground.visible, "10E5 hide_ground hides EnvFloor (visual only); CourtFloor is kept")
 	check(bool(tl().get_env_status().get("applied")), "env hook stays applied on 10E2")
 
 
@@ -3373,6 +3488,29 @@ func _perf_count_status_logs(path: String) -> int:
 
 
 
+func _hostile_packs_checks() -> void:
+	var lt := log_text()
+	var st: Dictionary = tl().get_status()
+	check(int(Engine.get_meta("jvm_pwned", 0)) == 0, "hostile packs: the canary script in evil.tres never ran (pwned %d)" % int(Engine.get_meta("jvm_pwned", 0)))
+	check(int(st.get("security_refused", 0)) >= 8, "hostile packs: refusals counted in status (%d, last: %s)" % [int(st.get("security_refused", 0)), st.get("security_last_refusal", "")])
+	check(lt.contains("refused: unsafe path 'res://_mods/resources/packs/hostile_tres/evil.tres'"), "res:// reference to a pack .tres refused")
+	check(lt.contains("refused: unsafe path 'user://evil.tres'"), "user:// reference refused")
+	check(lt.contains("'evil.tres' in hostile_tres: .tres is not an allowed pack file type"), ".tres named by a pack refused by type")
+	check(lt.contains("hostile_tres/spoof.png: not a valid png"), "spoofed .png (a .tres inside) refused by magic bytes")
+	check(lt.contains("hostile_spoof/ball_tex.png: not a valid png"), "spoofed ball texture refused by magic bytes")
+	check(lt.contains("refused: unsafe path '../royal_court/court_floor.png'") and lt.contains("refused: unsafe path '../env_ok_test/env.glb'"), "'..' traversal refused (texture + env mesh)")
+	check(lt.contains("hostile_bomb/bomb.png: image 20000x20000 exceeds"), "oversize (decompression bomb) image refused before decoding")
+	check(lt.contains("is not a game texture"), "global replacement aimed at a pack .tres refused")
+	check(lt.contains("environment.lights in hostile_lights: 50 lights, only the first 8 are used"), "environment.lights capped at 8 per pack")
+	check(lt.contains("environment.lights[0] in hostile_lights: non-finite value"), "non-finite light values refused")
+	check(not bool(tl().pack_info("1E08").get("has_audio", false)), "audio ambience pointing at a pack file is refused (not a native res://game/sfx|ost id)")
+	if tl().has_method("audio_apply_pack"):
+		check(int(tl().audio_apply_pack("1E08")) == 0 and int(Engine.get_meta("jvm_pwned", 0)) == 0, "hostile audio pack plays nothing and runs nothing")
+	var stages := []
+	for p in tl().list_picker_packs("stage"): stages.append(String(p.get("id")))
+	check("1E01" in stages and "1E05" in stages, "hostile stage packs still listed (data parts only, nothing executed)")
+
+
 func ld() -> Node: return get_node_or_null("/root/JVLoader")
 func bridge() -> Dictionary: return ld().get_bridge_status() if ld() else {}
 func _loader() -> void:
@@ -3387,6 +3525,7 @@ func _loader() -> void:
 	await wait(0.9)
 	var gfiles_before := DirAccess.get_files_at(gdir)
 	check(ld() != null, "one loader node /root/JVLoader")
+	_hostile_packs_checks()
 	check(tl() != null and ml() != null, "texture + model subsystems at their old paths (/root/JVTextureLoader, /root/JVModelLoader)")
 	check(gate().is_cosmetic_active() and tex_on(), "textures: global pack swap applied through the unified loader")
 	var ms: Dictionary = ml().get_status()

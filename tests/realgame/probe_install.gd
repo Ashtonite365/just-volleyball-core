@@ -4,6 +4,14 @@ extends Node
 
 
 func p(msg: String) -> void: print("PROBE ", msg)
+
+
+func set_model_pick(id: String) -> void:
+	var path := ProjectSettings.globalize_path("res://mods/resources/packs/equipped.json")
+	var old = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	var d: Dictionary = old if old is Dictionary else {}
+	d["model"] = id
+	var f := FileAccess.open(path, FileAccess.WRITE); f.store_string(JSON.stringify(d)); f.close()
 var m: Node = null
 var out_dir := ""
 func shot(name: String) -> void:
@@ -86,7 +94,7 @@ func _ready() -> void:
 	var rig: Node = pl.get("_model")
 	p("loaders textures=%s models=%s" % [tl != null, ml != null])
 	var M := ProjectSettings.globalize_path("res://mods")
-	var MD := M.path_join("models"); var T := M.path_join("resources/packs")
+	var T := M.path_join("resources/packs"); var MD := T
 	p("models_dir=%s" % [DirAccess.get_directories_at(MD)])
 	p("packs_dir=%s" % [DirAccess.get_directories_at(T)])
 	await frames(20)
@@ -119,30 +127,31 @@ func _ready() -> void:
 	_cp_dir(T.path_join("02_champion_cap_hat"), T.path_join("07_cap_copy_renamed"))
 	var sj = JSON.parse_string(FileAccess.get_file_as_string(T.path_join("07_cap_copy_renamed/skin.json")))
 	sj["id"] = "1007"; sj["name"] = "Cap copy"; _wjson(T.path_join("07_cap_copy_renamed/skin.json"), sj)
-	_wjson(T.path_join("equipped.json"), {"equipped": ["1001", "1007", "1003"]}); tl.call("reload_config"); await frames()
+	_wjson(T.path_join("equipped.json"), {"equipped": ["1001", "1007", "1003"], "model": "BEA0"}); tl.call("reload_config"); await frames()
 	report("swap03for07", tl, ml, pl, rig)
 	await shot("08-packs_03_removed_07_added")
 	_rm_dir(T.path_join("07_cap_copy_renamed"))
 	DirAccess.rename_absolute(M.path_join("_off_03"), T.path_join("03_flame_tail_back"))
-	_wjson(T.path_join("equipped.json"), {"equipped": ["1001", "1002", "1003"]}); tl.call("reload_config"); await frames()
+	_wjson(T.path_join("equipped.json"), {"equipped": ["1001", "1002", "1003"], "model": "BEA0"}); tl.call("reload_config"); await frames()
 	report("restored_packs", tl, ml, pl, rig)
 
 	_cp_dir(MD.path_join("plump_bean"), MD.path_join("bean_copy_renamed"))
 	var mj = JSON.parse_string(FileAccess.get_file_as_string(MD.path_join("bean_copy_renamed/skin.json")))
 	mj["id"] = "BEA1"; mj["name"] = "Bean copy"; _wjson(MD.path_join("bean_copy_renamed/skin.json"), mj)
-	_wjson(MD.path_join("equipped.json"), {"model": "BEA1"}); ml.call("reload_config"); await frames()
+	set_model_pick("BEA1"); ml.call("reload_config"); await frames()
 	report("model_copy", tl, ml, pl, rig)
 	_rm_dir(MD.path_join("bean_copy_renamed")); ml.call("reload_config"); await frames()
 	report("model_copy_deleted", tl, ml, pl, rig)
-	_wjson(MD.path_join("equipped.json"), {"model": "BEA0"}); ml.call("reload_config"); await frames()
+	set_model_pick("BEA0"); ml.call("reload_config"); await frames()
 	DirAccess.rename_absolute(M.path_join("resources"), M.path_join("_off_resources")); tl.call("reload_config"); await frames()
 	report("no_resources_folder", tl, ml, pl, rig)
 	await shot("09-no_resources_folder")
 	DirAccess.rename_absolute(M.path_join("_off_resources"), M.path_join("resources")); tl.call("reload_config")
-	DirAccess.rename_absolute(MD, M.path_join("_off_models")); ml.call("reload_config"); await frames()
+
+	await frames()
+	p("models_dir_exists=%s (merged layout: expect false)" % DirAccess.dir_exists_absolute(M.path_join("models")))
 	report("no_models_folder", tl, ml, pl, rig)
 	await shot("10-no_models_folder")
-	DirAccess.rename_absolute(M.path_join("_off_models"), MD); ml.call("reload_config"); await frames()
 	report("final", tl, ml, pl, rig)
 	await shot("11-final")
 	p("done")

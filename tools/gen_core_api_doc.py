@@ -29,7 +29,7 @@ F = []
 def sec(title, intro, rows): F.append((title, intro, rows))
 
 sec("API info, registration, gate", "Call these first. `register_mod` is required before any call that names a mod.", [
- ("get_api_version", "", "String", "-", "", "API version `major.minor.patch` (now `1.3.0`). No side effects.", 'api.get_api_version()  # "1.3.0"'),
+ ("get_api_version", "", "String", "-", "", "API version `major.minor.patch` (now `1.4.0`). No side effects.", 'api.get_api_version()  # "1.4.0"'),
  ("register_mod", "name: String, version: String, caps: PackedStringArray", "Dictionary {ok, reason, granted, denied}", "-", "", "Registers (or re-registers) a mod with the API version it was written for (same major, minor <= ours) and the capabilities it will call. Unknown and planned ids are denied (listed in `denied`). Logged once.", 'api.register_mod("my_mod", "1.1", PackedStringArray(["scene.balls", "goofy.ball"]))'),
  ("get_capabilities", "", "Array[Dictionary] {id, since, access, scope, status, feature, game_refs, functions, open}", "-", "", "The whole capability table with the live `open` flag.", "for c in api.get_capabilities(): print(c.id, c.open)"),
  ("has_capability", "id: String", "bool", "-", "", "True when the id exists and is not planned.", 'api.has_capability("court.env")'),
@@ -145,6 +145,21 @@ sec("Courts: environment and sky", "", [
  ("court_sky_status", "mod: String", "Dictionary", "court.query", "", "Distant sky status.", 'api.court_sky_status("my_mod")'),
  ("court_env_load", "mod: String, stage_id: String", "bool", "court.env", "also needs stage.pick", "Picks the court and applies it now: floor/net look + environment GLB (clearance-checked) + sky.", 'api.court_env_load("my_mod", "10E1")'),
 ])
+
+sec("Native audio (1.4)", "Lazy access to the game's own sound effects and ambience tracks through the unified loader. Enumeration is a cheap index of `res://` paths (`res://game/sfx`, `res://game/ost`); a stream is loaded and a player/host node is created only on the first play request, then freed when unused. Playback is routed through the game's existing Master / sfx / music / ambient / crowd / announcer buses so the user's volume settings apply. Stage packs may declare `audio: { ambience, bus, volume }` in `skin.json`; no shipped pack uses it yet.", [
+ ("audio_list", "mod: String", "Array[Dictionary] {id, path, category, bus}", "audio.query", "", "Native sounds as a path index only. Does not load streams or create players/nodes.", 'api.audio_list("my_mod").size()'),
+ ("audio_buses", "mod: String", "PackedStringArray", "audio.query", "", "Live AudioServer bus names (Master, sfx, music, ambient, ...). Cheap; does not start playback.", 'api.audio_buses("my_mod")'),
+ ("audio_info", "mod: String, id: String", "Dictionary {found, id, path, category, bus}", "audio.query", "", "Resolve a native sound by short id, alias (`beach`) or `res://` path. Builds the path index if needed; does not load the stream.", 'api.audio_info("my_mod", "beach")'),
+ ("audio_status", "mod: String", "Dictionary {started, index_built, index_count, cached_streams, players, nodes, idle, ...}", "audio.query", "", "Idle means started=false and no players, host node or cached streams. Listing sounds does not leave idle.", 'api.audio_status("my_mod").idle'),
+ ("audio_play", "mod: String, id: String, opts: Dictionary = {}", "int (handle, 0 = fail)", "audio.play", "", "Play a native one-shot. opts: volume (linear), bus, position (Vector3, optional 3D). Creates the host node and loads the stream on first use.", 'api.audio_play("my_mod", "announcer/ace")'),
+ ("audio_play_loop", "mod: String, id: String, opts: Dictionary = {}", "int (handle, 0 = fail)", "audio.play", "", "Play a native sound looped (ambience). Same opts as audio_play. The beach ambience id is `beach` / `ambiance/717146__ghosttropic__short-sand-beach-waves-3`.", 'api.audio_play_loop("my_mod", "beach", {"bus": "ambient"})'),
+ ("audio_stop", "mod: String, handle_or_id: Variant", "bool", "audio.play", "", "Stop a handle (int) or every voice of a sound id (String). Frees the stream when unused; frees the host node when nothing is playing.", 'api.audio_stop("my_mod", h)'),
+ ("audio_stop_all", "mod: String", "bool", "audio.play", "", "Stop every voice started through this API and return to the idle (zero-cost) state.", 'api.audio_stop_all("my_mod")'),
+ ("audio_set_volume", "mod: String, handle: int, volume: float", "bool", "audio.play", "", "Per-voice linear gain (the bus still follows the game's Master/sfx/music/ambient volume).", 'api.audio_set_volume("my_mod", h, 0.5)'),
+ ("audio_set_bus", "mod: String, handle: int, bus: String", "bool", "audio.play", "", "Move a voice to a game bus (ambient, sfx, music, crowd, announcer, Master, feedback). Unknown names fall back.", 'api.audio_set_bus("my_mod", h, "ambient")'),
+ ("audio_apply_pack", "mod: String, stage_id: String", "int (handle, 0 = none)", "audio.play", "", "Apply a stage pack's audio{} block (looped ambience). No-op when the pack has no audio{}.", 'api.audio_apply_pack("my_mod", "10F8")'),
+])
+
 sec("Accessories and player models", "", [
  ("accessories_status", "mod: String", "Dictionary {injected, catalog_added, catalog_total, entries, worn, unplaced}", "accessories.query", "", "Locker accessories from packs (Head / Face / Extra).", 'api.accessories_status("my_mod")'),
  ("accessories_list", "mod: String, category: String", "Array[Dictionary] {id, category, part, pack}", "accessories.query", "", "Entries of one category (`head`, `face`, `extra`; \"\" = all).", 'api.accessories_list("my_mod", "head")'),
@@ -354,6 +369,7 @@ since13 = set()
 for m in re.finditer(r'(?:BM\(|D_METHOD\(")(\w+)', open(os.path.join(ROOT, "src/core/mod_api_dev.cpp")).read()): since13.add(m.group(1))
 _gs_src = open(os.path.join(ROOT, "src/core/gameplay_settings_api.cpp")).read()
 since13 |= set(re.findall(r'D_METHOD\("(\w+)"', _gs_src)) | set(re.findall(r'BM\((\w+)', _gs_src))
+since14 = {"audio_list", "audio_buses", "audio_info", "audio_status", "audio_play", "audio_play_loop", "audio_stop", "audio_stop_all", "audio_set_volume", "audio_set_bus", "audio_apply_pack"}
 for title, intro, rows in F:
     anchor = re.sub(r'[^a-z0-9 -]', '', title.lower()).replace(' ', '-')
     toc.append(f"- [{title}](#{anchor}) ({len(rows)})")
@@ -364,10 +380,7 @@ for title, intro, rows in F:
         nfun += 1
         body.append(f"### {sig(name, params)} → {ret}")
         body.append("")
-since13 = set()
-for m in re.finditer(r'(?:BM\(|D_METHOD\(")(\w+)', open(os.path.join(ROOT, "src/core/mod_api_dev.cpp")).read()): since13.add(m.group(1))
-_gs_src = open(os.path.join(ROOT, "src/core/gameplay_settings_api.cpp")).read()
-since13 |= set(re.findall(r'D_METHOD\("(\w+)"', _gs_src)) | set(re.findall(r'BM\((\w+)', _gs_src))
+        ver = "1.4" if name in since14 else ("1.3" if name in since13 else ("1.2" if name in since12 else ("1.1" if name in since11 else "1.0")))
         capids = [c.strip() for c in cap.split("/")] if cap != "-" else []
         if capids:
             c0 = caps.get(capids[0])
@@ -429,6 +442,7 @@ w("| `mods/core/00-default.json` `devtools` | object | see docs/DEVTOOLS.md | `d
 w("| `user://jv_profiler/` | folder | - | Profiler captures (`capture-<time>-<n>[-tag].json` + `.csv`) and `debug-dump-<time>.json`. |")
 w("| `mods/core/00-default.json` `menu_perf` | bool | true | Menu perf default (cheaper menu motion, same look). `menu_perf_set` changes it for the session. |")
 w("| `mods/<category>/*.json` | JSON | per library | Library configs (shots, goofy, textures ...), read by `load_config` / `library_reload`, validated by `config_validate`. |")
+w("| stage pack `skin.json` `audio{}` | JSON | - | Optional native ambience for a court (`ambience` = native id/path/alias such as `beach`, plus optional `bus` / `volume`). Parsed only; the stream is loaded when the pack is applied. See docs/PICKERS.md. |")
 w("| stage pack `skin.json` `environment{}` / `sky{}` / `court{}` / `goofy{}` | JSON | - | Court environment GLB, distant sky, court look and the map's goofy block (see docs/PICKERS.md, docs/UNIFIED-LOADER.md). Read via `court_env_info`, `loader_map_goofy_block`. |")
 w("")
 w("## Capabilities")

@@ -32,7 +32,7 @@ std::optional<Hash> from_hex(const std::string &s);
 
 
 
-struct FileEntry { std::string path; Hash sha; uint64_t size = 0; };
+struct FileEntry { std::string path; Hash sha; uint64_t size = 0; std::string url; };
 Hash tree_hash(std::vector<FileEntry> files);
 uint64_t tree_size(const std::vector<FileEntry> &files);
 
@@ -59,6 +59,7 @@ std::vector<uint8_t> encode(const Offer &o);
 std::optional<Offer> decode(const std::vector<uint8_t> &bytes);
 
 
+inline constexpr const char *kRepoPrefix = "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/";
 inline constexpr const char *kRawBase = "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/main/";
 inline constexpr const char *kManifestUrl = "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/main/manifest.json";
 constexpr int kSchemaVersion = 1;
@@ -76,12 +77,18 @@ struct RawManifestItem {
 	std::string id, name, type, sha256, download_url, path;
 	double size = -1;
 	std::vector<std::pair<std::string, std::pair<std::string, double>>> files;
+	std::map<std::string, std::string> file_urls;
 };
 struct CatalogItem {
 	uint16_t id = 0; std::string name, type; Kind kind = Kind::Outfit;
 	Hash zip_sha{}; uint64_t zip_size = 0; std::string url, folder;
 	std::vector<FileEntry> files; Hash tree{}; uint64_t tree_bytes = 0;
 };
+bool files_have_urls(const CatalogItem &ci);
+
+
+std::string install_verified_files(const std::string &dest, const CatalogItem &ci,
+		const std::vector<std::pair<std::string, std::vector<uint8_t>>> &bodies);
 struct Catalog { std::map<uint16_t, CatalogItem> items; std::vector<std::string> errors; };
 
 

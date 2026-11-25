@@ -17,7 +17,7 @@ func run(driver: Node) -> void:
 	d.check(a != null, "API registered as Engine singleton JVModAPI")
 	d.check(d.get_node_or_null("/root/JVModGate/JVModAPI") == a, "API node at /root/JVModGate/JVModAPI")
 	if a == null: return
-	d.check(a.get_api_version() == "1.3.0", "API version 1.3.0")
+	d.check(a.get_api_version() == "1.4.0", "API version 1.4.0")
 	var caps: Array = a.get_capabilities()
 	var cov: Dictionary = a.get_coverage()
 	d.check(caps.size() == int(cov["capabilities"]) and caps.size() >= 40, "capability list (%d) = coverage count" % caps.size())
@@ -30,12 +30,12 @@ func run(driver: Node) -> void:
 
 	var mods: Dictionary = a.get_mods()
 	d.check(mods.has("goofy") and (mods["goofy"]["declared"] as PackedStringArray).size() == 31, "goofy registered with 31 capabilities")
-	d.check(d.status().get("api", {}).get("version", "") == "1.3.0" and "goofy" in d.status()["api"]["mods"], "status.json has the API summary")
+	d.check(d.status().get("api", {}).get("version", "") == "1.4.0" and "goofy" in d.status()["api"]["mods"], "status.json has the API summary")
 
 	var r: Dictionary = a.register_mod("gdtest", "1.0", PackedStringArray(["scene.balls", "scene.players", "game.generic", "net.lobby_data", "ball.physics", "ball.flight", "nope.cap", "stage.lobby_picker"]))
 	d.check(r["ok"] and (r["granted"] as PackedStringArray).size() == 6 and (r["denied"] as PackedStringArray).size() == 2, "GDScript mod registers; unknown + planned refused (%s)" % [r["denied"]])
 	d.check(not a.register_mod("future", "2.0", PackedStringArray(["scene.balls"]))["ok"], "mod wanting API 2.0 refused")
-	d.check(not a.register_mod("newer", "1.4", PackedStringArray(["scene.balls"]))["ok"], "mod wanting API 1.4 refused (this is 1.1)")
+	d.check(not a.register_mod("newer", "1.5", PackedStringArray(["scene.balls"]))["ok"], "mod wanting API 1.5 refused (this is 1.4)")
 	a.access_changed.connect(_on_access)
 
 	d.set_lobby("offline", -1); await d.wait(0.9)

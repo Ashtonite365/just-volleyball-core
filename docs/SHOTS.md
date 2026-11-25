@@ -80,11 +80,15 @@ stops on the next touch (`strike_seq`), on landing or if the ball starts a float
 (`curve == 0`) and float serves are not touched.
 
 The player who made the shot (the local `hit_by` / `strike_source`) sees the full coloured
-display. Every other player, including the host when they did not hit, follows
-`curve_display_remote` (`grey` default: desaturated, lower alpha, no shimmer or shake;
-`full` = the same as the hitter; `off` = hidden, and the exact marker is hidden so it cannot
-leak the landing). These two options live in the shots config (`shots.spin_display`,
-`shots.curve_display_remote`); they are visual-only and are not host-synced gameplay settings.
+path and offset `?` (the pre-change curve display). Every other player, including the host
+when they did not hit, sees **no curve or flight path**. They get the game's own float
+uncertainty box (same corner triangles, styling, wobble and `FLOAT_MARK_*` fade), expanded
+from the hitter's crosshair to the curve's farthest possible landing, with the `?` anchored
+near the true predicted landing (small wobble only). `curve_display_remote` still tints or
+hides that indicator (`grey` default, `full` colour, `off` = hidden, and the exact marker is
+hidden so it cannot leak the landing). These two options live in the shots config
+(`shots.spin_display`, `shots.curve_display_remote`); they are visual-only and are not
+host-synced gameplay settings.
 
 
 ### No-clash table

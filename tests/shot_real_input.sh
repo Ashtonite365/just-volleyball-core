@@ -12,8 +12,8 @@ cp -r "$HERE/dist/game_dir/." "$R/"; cp "${DLL_DIR:-$HERE/bin/windows}"/*.dll "$
 x86_64-w64-mingw32-objdump -p "$R/volleyball.exe" | awk '/DLL Name: steam_api64.dll/{f=1;next} /DLL Name:/{f=0} f && $NF ~ /^Steam/ {print $NF}' | sort -u |
   python3 -c "import sys; print('#include <stdint.h>'); [print('__declspec(dllexport) intptr_t %s(void){return %s;}' % (n, '1' if n in ('SteamInternal_SteamAPI_Init','SteamAPI_InitFlat') else '0')) for n in sys.stdin.read().split()]" > "$R/stub.c"
 x86_64-w64-mingw32-gcc -shared -O1 -w -o "$R/steam_api64.dll" "$R/stub.c"
-if [ -n "${EXTRA_MODEL:-}" ]; then mkdir -p "$R/mods/models/zz_test_model"; cp "$EXTRA_MODEL" "$R/mods/models/zz_test_model/"
-  echo "{\"kind\":\"model\",\"id\":\"7E51\",\"name\":\"Test model\",\"model\":\"$(basename "$EXTRA_MODEL")\",\"game_hands\":\"tint\"}" > "$R/mods/models/zz_test_model/skin.json"; fi
+if [ -n "${EXTRA_MODEL:-}" ]; then mkdir -p "$R/mods/resources/packs/zz_test_model"; cp "$EXTRA_MODEL" "$R/mods/resources/packs/zz_test_model/"
+  echo "{\"kind\":\"model\",\"id\":\"7E51\",\"name\":\"Test model\",\"model\":\"$(basename "$EXTRA_MODEL")\",\"game_hands\":\"tint\"}" > "$R/mods/resources/packs/zz_test_model/skin.json"; fi
 cp "$HERE/tests/realgame/${PROBE:-probe_realinput}.gd" "$R/mods/_probe.gd"
 sed -i 's|^\[autoload\]$|[autoload]\nJvProbe="*res://mods/_probe.gd"|' "$R/override.cfg"
 W=${SIZE%x*}; H=${SIZE#*x}

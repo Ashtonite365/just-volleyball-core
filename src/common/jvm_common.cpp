@@ -95,6 +95,11 @@ void warn(const String &tag, const String &msg) {
 
 Variant load_json(const String &path) {
 	if (!FileAccess::file_exists(path)) return Variant();
+	{
+		Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+		if (f.is_null()) return Variant();
+		if (f->get_length() > 4u * 1024 * 1024) { warn("common", "JSON file too large (over 4 MB), ignored: " + path); return Variant(); }
+	}
 	String text = FileAccess::get_file_as_string(path);
 	Ref<JSON> json;
 	json.instantiate();

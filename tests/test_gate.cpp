@@ -286,6 +286,7 @@ int main() {
 		p.exe_size = 85303808; p.exe_sha256 = "224a5ea56536081b84369a0e90590a688a8510fefcc24ab84af1a31b3e052435";
 		Observed o; o.engine = p.engine; o.pck_size = p.pck_size; o.pck_sha256 = "5696C7CC027EE370CBAA737A9BB3B4D7D37B48195592F7FB1F24C921C7810F46";
 		o.exe_size = p.exe_size; o.exe_sha256 = p.exe_sha256; o.steam_buildid = "26924091";
+		o.game_version = "1.0.4.2";
 		CHECK(match_pins({ p }, o).ok);
 		Observed o2 = o; o2.steam_buildid = ""; CHECK(match_pins({ p }, o2).ok);
 		Observed sz = o; sz.pck_size = 171181117; CHECK(!match_pins({ p }, sz).ok);
@@ -296,13 +297,55 @@ int main() {
 		Observed ex = o; ex.exe_sha256 = "00"; CHECK(!match_pins({ p }, ex).ok);
 		Observed bi = o; bi.steam_buildid = "26999999"; CHECK(!match_pins({ p }, bi).ok);
 		Observed miss = o; miss.pck_size = -1; CHECK(!match_pins({ p }, miss).ok);
-		CHECK(!match_pins({}, o).ok);
+		CHECK(!match_pins(std::vector<Pin>{}, o).ok);
 		Pin inc; inc.name = "incomplete"; CHECK(!match_pins({ inc }, o).ok);
 		Pin other = p; other.name = "older"; other.pck_size = 1; other.steam_buildid = "1";
 		CHECK(match_pins({ other, p }, o).ok && match_pins({ other, p }, o).matched == "steam-26924091");
 		CHECK(match_pins({ p }, sz).expected_build == "26924091");
 		CHECK(parse_acf_buildid("\"AppState\"\n{\n\t\"appid\"\t\t\"5037200\"\n\t\"buildid\"\t\t\"26924091\"\n}") == "26924091");
 		CHECK(parse_acf_buildid("nothing") == "");
+
+		Observed unread = o; unread.game_version = "";
+		CHECK(!match_pins({ p }, unread).ok);
+		CHECK(match_pins({ p }, unread).reason.find("unreadable") != std::string::npos);
+
+		CHECK(parse_source_const_string("const VERSION: = \"1.0.4.2\"\n", "VERSION") == "1.0.4.2");
+		CHECK(parse_source_const_string("const VERSION := \"1.0.4.2\"", "VERSION") == "1.0.4.2");
+		CHECK(parse_source_const_string("const VERSION = \"1.0.4.2\"", "VERSION") == "1.0.4.2");
+		CHECK(parse_source_const_string("const VERSION: String = \"1.0.4.2\"", "VERSION") == "1.0.4.2");
+		CHECK(parse_source_const_string("const OTHER = \"1.0.4.2\"", "VERSION") == "");
+
+		{
+			PinFile vf; vf.versions.push_back("1.0.4.2");
+			Observed ov; ov.game_version = "1.0.4.2"; ov.engine = o.engine;
+			ov.pck_size = 171181276; ov.pck_sha256 = "5393cffeb8b0a8b8dba47ff586ec7ede07f33ed5345f6b42c12cebe32ee287c0";
+			ov.exe_size = o.exe_size; ov.exe_sha256 = o.exe_sha256; ov.steam_buildid = "26929702";
+			CHECK(match_pins(vf, ov).ok);
+			CHECK(match_pins(vf, ov).matched.find("1.0.4.2") != std::string::npos);
+			Observed unk = ov; unk.game_version = "1.0.5";
+			CHECK(!match_pins(vf, unk).ok);
+			CHECK(match_pins(vf, unk).reason.find("unknown") != std::string::npos);
+			Observed blank = ov; blank.game_version = "";
+			CHECK(!match_pins(vf, blank).ok);
+			CHECK(match_pins(vf, blank).reason.find("unreadable") != std::string::npos);
+
+			Pin vp; vp.name = "steam-26924091"; vp.version = "1.0.4.2";
+			vp.steam_buildid = "26924091"; vp.engine = p.engine;
+			vp.pck_size = p.pck_size; vp.pck_sha256 = p.pck_sha256;
+			vp.exe_size = p.exe_size; vp.exe_sha256 = p.exe_sha256;
+			CHECK(match_pins({ vp }, ov).ok);
+			CHECK(match_pins({ vp }, ov).matched == "steam-26924091");
+
+			PinFile both; both.versions.push_back("1.0.4.2");
+			Pin np = vp; np.name = "steam-26929702"; np.steam_buildid = "26929702";
+			np.pck_size = ov.pck_size; np.pck_sha256 = ov.pck_sha256;
+			both.pins.push_back(vp); both.pins.push_back(np);
+			CHECK(match_pins(both, ov).ok);
+
+			Observed changed = o; changed.pck_size = 171181276;
+			CHECK(!match_pins({ p }, changed).ok);
+			CHECK(match_pins({ p }, changed).reason.find("pck size") != std::string::npos);
+		}
 	}
 
 
@@ -596,8 +639,11 @@ int main() {
 		CHECK(!r.spec->allow_scripts && r.spec->flash && r.spec->tint_param == "albedo" && r.spec->tint_strength == 1.0);
 		CHECK(is_model_kind("Model") && !is_model_kind("skin") && !is_model_kind("global"));
 		RawManifest k = m; k.kind = "skin"; CHECK(!parse_manifest(k).spec);
-		RawManifest t = m; t.model = "models\\aero.TSCN"; r = parse_manifest(t);
-		CHECK(r.spec && r.spec->model == "models/aero.TSCN" && r.spec->ext == "tscn");
+		RawManifest g2 = m; g2.model = "models\\aero.GLB"; r = parse_manifest(g2);
+		CHECK(r.spec && r.spec->model == "models/aero.GLB" && r.spec->ext == "glb");
+		for (const char *scene : { "models/aero.tscn", "aero.scn", "aero.gltf", "aero.tres", "aero.res", "aero.gd" }) {
+			RawManifest t = m; t.model = scene; CHECK(!parse_manifest(t).spec);
+		}
 		for (const char *bad : { "../x.glb", "a/../../x.glb", "/abs/x.glb", "C:/x.glb", "res://x.glb", "user://x.glb", "", "./" }) {
 			RawManifest b = m; b.model = bad; CHECK(!parse_manifest(b).spec);
 		}
@@ -607,9 +653,9 @@ int main() {
 		RawManifest o = m; o.team_tint = "skin"; o.game_hands = "tint"; o.apply_to = "all"; o.allow_scripts = true; o.hide_base = false;
 		o.tint_strength = 3.0; o.tint_light["sss_tint"] = 0.42; o.tint_param = "body_col"; o.flash = false;
 		r = parse_manifest(o);
-		CHECK(r.spec && r.spec->tint == Tint::None && r.spec->hands == Hands::Tint && r.spec->target == Target::All && r.spec->allow_scripts && !r.spec->hide_base);
+		CHECK(r.spec && r.spec->tint == Tint::None && r.spec->hands == Hands::Tint && r.spec->target == Target::All && !r.spec->allow_scripts && !r.spec->hide_base);
 		CHECK(r.spec->tint_strength == 1.0 && r.spec->tint_light.at("sss_tint") == 0.42 && r.spec->tint_param == "body_col" && !r.spec->flash);
-		CHECK(r.warnings.size() == 2);
+		CHECK(r.warnings.size() == 3);
 		for (const char *tt : { "jersey", "team", "skin" }) { RawManifest j = m; j.team_tint = tt; r = parse_manifest(j); CHECK(r.spec && r.spec->tint == Tint::None && r.warnings.size() == 1 && r.warnings[0].find("team tint is disabled") != std::string::npos); }
 		RawManifest nt = m; nt.team_tint = "none"; r = parse_manifest(nt); CHECK(r.spec && r.spec->tint == Tint::None && r.warnings.empty());
 		RawManifest w = m; w.team_tint = "rainbow"; w.game_hands = "juggle"; w.apply_to = "mars"; w.bad_types.push_back("hide_base");
@@ -1088,8 +1134,13 @@ int main() {
 		CHECK(std::string(CS::kManifestUrl) == B + "manifest.json" && CS::url_allowed(CS::kManifestUrl));
 		CHECK(B == "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/main/");
 		CHECK(CS::url_allowed(B + "balls/1011_beach/pack.zip"));
+		const std::string SHA = "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/0123456789abcdef0123456789abcdef01234567/balls/1011_beach/ball_tex.png";
+		CHECK(CS::url_allowed(SHA));
 		for (const char *u : { "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/mainx/a.zip", "https://evil.example/balls/a/pack.zip",
-				"http://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/main/a/pack.zip", "https://raw.githubusercontent.com/Ashtonite365/other/main/a/pack.zip" })
+				"http://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/main/a/pack.zip", "https://raw.githubusercontent.com/Ashtonite365/other/main/a/pack.zip",
+				"https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/HEAD/balls/a.png",
+				"https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/0123456789abcdef0123456789abcdef01234567/../balls/a.png",
+				"https://github.com/Ashtonite365/just-volleyball-assets/raw/main/balls/a.png" })
 			CHECK(!CS::url_allowed(u));
 		for (const char *r : { "../x/pack.zip", "a/../../b/pack.zip", "a//pack.zip", "a/pack.zip?x=1", "a/pack.zip#f", "a/%2e%2e/pack.zip", "a\\b/pack.zip", "a b/pack.zip", "@evil/pack.zip", "" })
 			CHECK(!CS::url_allowed(B + r));
@@ -1120,6 +1171,32 @@ int main() {
 		CHECK(one_bad([](auto &r) { r.size = 10.5; }));
 		CHECK(one_bad([&](auto &r) { r.download_url = "https://evil.example/pack.zip"; }));
 		CHECK(one_bad([&](auto &r) { r.download_url = B + "balls/1012_other/pack.zip"; }));
+		{
+			auto r = raw;
+			r[0].file_urls["skin.json"] = "https://evil.example/skin.json";
+			auto c = CS::validate_manifest(1, r);
+			CHECK(c.items.size() == 1 && c.errors.size() == 1);
+		}
+		{
+			auto r = raw;
+			r[0].file_urls["skin.json"] = B + "balls/1011_beach/skin.json";
+			r[0].file_urls["ball_tex.png"] = B + "balls/1011_beach/ball_tex.png";
+			auto c = CS::validate_manifest(1, r);
+			CHECK(c.errors.empty() && c.items.size() == 2 && CS::files_have_urls(c.items[0x1011]));
+		}
+		{
+			auto r = raw;
+			r[0].download_url = SHA;
+			auto c = CS::validate_manifest(1, r);
+			CHECK(c.items.size() == 1 && !c.errors.empty());
+		}
+		{
+			auto r = raw;
+			r[0].download_url = "https://raw.githubusercontent.com/Ashtonite365/just-volleyball-assets/0123456789abcdef0123456789abcdef01234567/balls/1011_beach/pack.zip";
+			auto c = CS::validate_manifest(1, r);
+			CHECK(c.errors.empty() && c.items.size() == 2);
+			CHECK(c.items[0x1011].url.find("0123456789abcdef0123456789abcdef01234567") != std::string::npos);
+		}
 		CHECK(one_bad([&](auto &r) { r.path = "../balls"; r.download_url = B + "../balls/pack.zip"; }));
 		CHECK(one_bad([](auto &r) { r.files.push_back({ "payload.dll", { std::string(64, 'a'), 1.0 } }); }));
 		CHECK(one_bad([](auto &r) { r.files.push_back({ "run.gd", { std::string(64, 'a'), 1.0 } }); }));

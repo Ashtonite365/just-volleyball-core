@@ -3,7 +3,7 @@ the only file outside it is override.cfg next to volleyball.exe.
 Framework files (don't edit):
   bin/                 the six DLLs + .gdextension files
   bootstrap.gd         loader started by override.cfg
-  pins.json            pinned game version (mods refuse to load on any other build)
+  pins.json            approved game versions (GameConfig.VERSION; mods refuse to load on any other version)
   gate_probes.json     how the gate reads the lobby type
   texture_sync.json    texture ID sync settings
   Watch-JvModStatus.ps1  live status viewer (PowerShell)

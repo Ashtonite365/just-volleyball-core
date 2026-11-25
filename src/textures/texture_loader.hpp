@@ -4,6 +4,7 @@
 #include "../common/api_client.hpp"
 #include "court_sky.hpp"
 #include "court_env.hpp"
+#include "../loader/native_audio.hpp"
 #include "../gate/skin_sync.hpp"
 #include "../gate/content_share.hpp"
 #include "../common/accessory_rules.hpp"
@@ -36,6 +37,8 @@ Dictionary jvm_models_installed_dirs();
 void jvm_models_rescan();
 void jvm_models_set_remote(const Dictionary &peer_to_id);
 String content_cache_dir();
+String content_packs_dir();
+
 
 
 
@@ -166,6 +169,7 @@ class JVTextureLoader : public Node {
 		BallSpec ball;
 		jvm::court_sky::SkySpec sky;
 		jvm::court_env::EnvSpec env;
+		jvm::native_audio::PackAudio audio;
 	};
 	struct Override { uint64_t mesh_id; int surface; Variant previous; int32_t owner_peer; };
 	struct MatOverride { uint64_t mesh_id; Variant previous; int32_t owner_peer; };
@@ -272,9 +276,16 @@ class JVTextureLoader : public Node {
 	void send_offer_to(int32_t peer, int32_t about, const std::vector<jvm::content::Item> &items);
 	void on_offer(int32_t from, const jvm::content::Offer &o);
 	void consider_offer(int32_t peer);
+	uint16_t file_dl_id_ = 0;
+	size_t file_dl_index_ = 0;
+	String file_dl_part_;
+	bool file_dl_active_ = false;
 	void start_http(const String &url, int64_t limit, const String &what);
 	void _on_http_done(int64_t result, int64_t code, const PackedStringArray &headers, const PackedByteArray &body);
 	void on_manifest(const PackedByteArray &body);
+	void start_file_fetch(uint16_t id);
+	String finish_file_fetch(uint16_t id, size_t index, const PackedByteArray &body);
+	void abort_file_fetch(uint16_t id, const String &err);
 	String install_pack(uint16_t id, const PackedByteArray &zip);
 	void content_reload(bool models);
 	void push_remote_models();
@@ -383,6 +394,17 @@ public:
 	int64_t get_status_rebuild_count() const { return status_rebuilds_; }
 	Dictionary get_sky_status() const { return jvm::court_sky::sky_status(); }
 	Dictionary get_env_status() const { return jvm::court_env::env_status(); }
+	Dictionary get_audio_status() const { return jvm::native_audio::status_dict(); }
+	Array audio_list() { return jvm::native_audio::list_native(); }
+	PackedStringArray audio_buses() const { return jvm::native_audio::list_buses(); }
+	Dictionary audio_info(const String &id) { return jvm::native_audio::info_dict(id); }
+	int audio_play(const String &id, const Dictionary &opts) { return jvm::native_audio::play_one_shot(id, opts); }
+	int audio_play_loop(const String &id, const Dictionary &opts) { return jvm::native_audio::play_loop(id, opts); }
+	bool audio_stop(const Variant &handle_or_id);
+	void audio_stop_all() { jvm::native_audio::stop_everything(); }
+	bool audio_set_volume(int handle, float volume) { return jvm::native_audio::set_voice_volume(handle, volume); }
+	bool audio_set_bus(int handle, const String &bus) { return jvm::native_audio::set_voice_bus(handle, bus); }
+	int audio_apply_pack(const String &stage_id);
 	Dictionary get_sync_status() const;
 	Dictionary get_content_status() const;
 	bool content_fetch(const String &id);

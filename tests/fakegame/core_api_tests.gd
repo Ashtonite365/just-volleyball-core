@@ -22,13 +22,13 @@ func register(a: Object) -> Dictionary:
 	var caps := PackedStringArray()
 	for c in a.get_capabilities():
 		if c["status"] != "planned": caps.append(c["id"])
-	return a.register_mod(M, "1.3", caps)
+	return a.register_mod(M, "1.4", caps)
 
 func run(driver: Node) -> void:
 	d = driver
 	await d.wait(0.9)
 	var a := api()
-	d.check(a != null and a.get_api_version() == "1.3.0", "CORE API 1.3.0 present")
+	d.check(a != null and a.get_api_version() == "1.4.0", "CORE API 1.4.0 present")
 	if a == null: return
 	var cov: Dictionary = a.get_coverage()
 	d.check(int(cov["capabilities"]) >= 70 and int(cov["impl"]) >= 55, "coverage %s" % cov)
@@ -94,6 +94,17 @@ func run(driver: Node) -> void:
 	d.check(a.cosmetics_apply(M) and a.packs_rescan(M), "cosmetics_apply / packs_rescan")
 	d.check(not a.textures_status(M).is_empty() and a.textures_cache_info(M).has("count"), "textures_status / textures_cache_info")
 	d.check(a.textures_sync_status(M) is Dictionary, "textures_sync_status")
+
+	d.check(a.has_capability("audio.query") and a.has_capability("audio.play"), "audio.query / audio.play capabilities")
+	var ast0: Dictionary = a.audio_status(M)
+	d.check((not bool(ast0.get("started", true))) and int(ast0.get("players", 1)) == 0 and int(ast0.get("nodes", 1)) == 0 and int(ast0.get("cached_streams", 1)) == 0, "audio idle before any request: %s" % str(ast0))
+	var al: Array = a.audio_list(M)
+	d.check(al is Array, "audio_list answers (fakegame may be empty) n=%d" % al.size())
+	var ast1: Dictionary = a.audio_status(M)
+	d.check((not bool(ast1.get("started", true))) and int(ast1.get("players", 1)) == 0 and int(ast1.get("nodes", 1)) == 0 and int(ast1.get("cached_streams", 1)) == 0, "audio_list does not start playback or create players/nodes: %s" % str(ast1))
+	d.check(a.audio_buses(M) is PackedStringArray, "audio_buses answers")
+	d.check(int(a.audio_play(M, "not-a-real-sound")) == 0 and not bool(a.audio_status(M).get("started", true)), "unknown sound does not start the system")
+	a.audio_stop_all(M)
 	d.check(a.accessories_status(M) is Dictionary and a.accessories_list(M, "head") is Array, "accessories_status / accessories_list")
 	d.check(not a.loader_status(M).is_empty() and a.loader_bridge_status(M) is Dictionary and a.loader_active_map(M) is String, "loader_status / bridge / active map")
 	d.check(a.loader_is_map(M, "10E1") == true or a.loader_is_map(M, "10E1") == false, "loader_is_map answers")
@@ -169,7 +180,7 @@ func run(driver: Node) -> void:
 	d.check(sm.size() == 1 and sm[0]["name"] == "hello_api", "script mod loaded from mods/api_mods (%s)" % str(sm))
 	var hello := d.get_node_or_null("/root/JVScriptMods/hello_api")
 	d.check(hello != null and a.get_mods().has("hello_api"), "hello_api registered through the API")
-	if hello: d.check(hello.log_lines.any(func(l): return String(l).begins_with("registered with API 1.3.0")), "hello_api log: %s" % str(hello.log_lines).left(160))
+	if hello: d.check(hello.log_lines.any(func(l): return String(l).begins_with("registered with API 1.4.0")), "hello_api log: %s" % str(hello.log_lines).left(160))
 	d.check(a.unsubscribe(M, "mode_changed", _on_event) and not a.unsubscribe(M, "mode_changed", _on_event), "unsubscribe")
 
 

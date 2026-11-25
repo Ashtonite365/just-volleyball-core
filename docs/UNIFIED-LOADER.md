@@ -10,8 +10,8 @@ entry, one node to manage: `/root/JVLoader` (class `JVLoader`). It has four subs
 
 | subsystem | code | node | what |
 |---|---|---|---|
-| texture | `src/textures/` (unchanged files) | `/root/JVTextureLoader` | resource packs, global swaps, per-player skins + ID sync, outfits/hats/back, net/court/ball specs, stage + ball picker packs, `picker.json`, `equipped.json` |
-| model | `src/models/` (unchanged files) | `/root/JVModelLoader` (+ `JVModelTab`) | full player models from `mods/models`, locker model tab, `model_settings.json` |
+| texture | `src/textures/` (unchanged files) + `src/loader/native_audio*` | `/root/JVTextureLoader` | resource packs, global swaps, per-player skins + ID sync, outfits/hats/back, net/court/ball specs, stage + ball picker packs, `picker.json`, `equipped.json`, lazy native-audio API (`audio{}` / `audio.*` caps) |
+| model | `src/models/` (unchanged files) | `/root/JVModelLoader` (+ `JVModelTab`) | full player models (kind "model" packs in `mods/resources/packs`, old `mods/models` fallback - docs/CONTENT-FOLDER.md), locker model tab, `model_settings.json` |
 | stage / map | `src/loader/unified_loader.cpp` | (inside JVLoader) | which loader map is in play now: a `type:"stage"` pack is picked, the cosmetic tier is open and the current scene has a `Court` |
 | goofy bridge | `src/loader/unified_loader.cpp` + `src/loader/bridge_logic.hpp` | (inside JVLoader) | hands the in-play map's optional `goofy` section to Goofy API 1.x, removes it on leave |
 
@@ -35,6 +35,12 @@ decide whether to show itself: true only for `type:"stage"` packs loaded by this
 Status: `status.json` `libraries` now has `loader` (JVLoader) plus `textures` and `models` (the
 subsystems, same keys as before). Mods panel keeps the two config pages, titled
 "map loader: resource packs + courts" and "map loader: player models".
+
+Native audio (API 1.4) lives in `src/loader/native_audio*` and is reached through
+`JVTextureLoader` / CORE (`audio.query`, `audio.play`). It enumerates the game's
+own `res://game/sfx` and `res://game/ost` streams as a path index and only
+loads a stream or creates `/root/JVM_NativeAudio` when something plays. See
+docs/PICKERS.md "Pack audio" and docs/CORE-API.md "Native audio (1.4)".
 
 ## 2. Goofy section: load order / flow, step by step
 
@@ -86,7 +92,7 @@ writes the user's Goofy files.
 ## 3. Compatibility notes
 
 - Unchanged and still loading: every pack folder and ID under `mods/resources/packs/` (and the old
-  `mods/resource packs/` fallback), `picker.json`, `equipped.json`, `mods/models/<model>/`,
+  `mods/resource packs/` fallback), `picker.json`, `equipped.json`, `resources/packs/<model>/` (was `mods/models/<model>/`),
   `models/equipped.json`, `model_settings.json`, `texture_sync.json`, shots config, goofy config.
   No file is moved or rewritten by the merge; there is no migration step because nothing changed
   location. Node paths, class names, bound methods and status keys are the same.

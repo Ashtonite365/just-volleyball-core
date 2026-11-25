@@ -20,7 +20,7 @@ func run(driver: Node) -> void:
 	d = driver
 	await d.wait(0.9)
 	var a := api()
-	d.check(a != null and a.get_api_version() == "1.3.0", "API 1.3.0")
+	d.check(a != null and a.get_api_version() == "1.4.0", "API 1.4.0")
 	if a == null: return
 	var r: Dictionary = a.register_mod(M, "1.3", PackedStringArray(["dev.profiler", "dev.debugger", "player.consts_check", "api.info"]))
 	d.check(r["ok"] and (r["denied"] as PackedStringArray).is_empty(), "register with dev.profiler / dev.debugger / player.consts_check")

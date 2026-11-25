@@ -249,6 +249,18 @@ public:
 	Dictionary court_sky_status(const String &mod);
 	Dictionary court_env_info(const String &mod, const String &stage_id);
 	bool court_env_load(const String &mod, const String &stage_id);
+
+	Array audio_list(const String &mod);
+	PackedStringArray audio_buses(const String &mod);
+	Dictionary audio_info(const String &mod, const String &id);
+	Dictionary audio_status(const String &mod);
+	int64_t audio_play(const String &mod, const String &id, const Dictionary &opts);
+	int64_t audio_play_loop(const String &mod, const String &id, const Dictionary &opts);
+	bool audio_stop(const String &mod, const Variant &handle_or_id);
+	bool audio_stop_all(const String &mod);
+	bool audio_set_volume(const String &mod, int64_t handle, double volume);
+	bool audio_set_bus(const String &mod, int64_t handle, const String &bus);
+	int64_t audio_apply_pack(const String &mod, const String &stage_id);
 	Dictionary accessories_status(const String &mod);
 	Array accessories_list(const String &mod, const String &category);
 

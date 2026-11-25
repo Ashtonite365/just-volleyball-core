@@ -63,7 +63,7 @@ without a ball or court block stay always-on.
 | `name` | full name; used if `label` is absent |
 | `label` | short name on the tile and the bottom-bar pill |
 | `preview` | pack-relative image for the tile (default `preview.png`) |
-| `base_stage` | stage packs: the game stage loaded underneath (default `grass`) |
+| `base_stage` | stage packs: the game stage loaded underneath (default `grass`). For custom courts prefer `tutorial` (blank Training Space court + force wall, CourtFloor stays paintable). Do not use `beach`: v1.0.4 hides CourtFloor and the pack skin will not apply. |
 | `variants` / `tod` | optional names for day/evening/night; otherwise the base stage's variants are used |
 | `ball` | look-only. Known fields: `albedo_tex` (or `tex`), `albedo_color`, `color_a`, `color_b`, `shade`, `wrap` (e.g. `"equirect"`). Extra fields are kept and ignored by the current apply path. |
 | `court` | look-only court / grass colours and textures (no collision change) |
@@ -134,7 +134,13 @@ stock gym roof). `baked_lighting` enables vertex-color albedo on the loaded
 meshes. Env props have realtime shadows forced off. Optional `lod` entries set
 `visibility_range_begin` / `visibility_range_end` on each mesh. `sway` (or
 node names containing `sway` / `kelp` / `grass`) applies a look-only vertex
-shader.
+shader. Optional `lights` is an array of omni lights, e.g.
+`{"type":"omni","position":[x,y,z],"color":"#ffc070","energy":4.2,"range":34}`.
+The loader parents an `OmniLight3D` under `JVM_CourtEnv`. Meshes named
+`lantern` / `lamp` / `glow` keep emission instead of unshaded baked lighting
+so they can act as the scene's light source. Floors and large env meshes stay
+opaque at the default `render_priority` so the net and ball hit indicator
+draw on top.
 
 Geometry in the environment must stay a clear margin (`0.75 m`) off the
 force-wall surface, except a thin ground slab at `y ≈ 0`, which may extend
@@ -151,6 +157,34 @@ and past the barrier.
 
 Court-specific gravity or drag is not applied here. That comes through the
 Goofy API `goofy` block via this unified loader.
+
+## Pack audio
+
+A stage pack may include an `audio` block that plays one of the game's own
+native sounds (usually looped ambience) when the court is applied. The sound
+is not shipped in the pack; the loader looks it up by stable id or `res://`
+path from the loaded game (`res://game/sfx`, `res://game/ost`).
+
+```json
+{
+  "audio": {
+    "ambience": "beach",
+    "bus": "ambient",
+    "volume": 1.0
+  }
+}
+```
+
+`ambience` may be a short id (`ambiance/717146__ghosttropic__short-sand-beach-waves-3`),
+the alias `beach`, or the full path
+`res://game/sfx/Ambiance/717146__ghosttropic__short-sand-beach-waves-3.wav`.
+`bus` and `volume` are optional (`bus` defaults to the folder's usual bus:
+Ambiance → `ambient`, Crowd → `crowd`, Announcer → `announcer`, `game/ost` →
+`music`, otherwise `sfx`). Playback follows the game's Master / sfx / music /
+ambient volume settings. The audio system stays idle (no streams, players or
+nodes) until a pack or mod actually requests a sound; listing ids is a cheap
+path index only. No shipped court pack currently sets `audio`.
+
 
 ## UI
 

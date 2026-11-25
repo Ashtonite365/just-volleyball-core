@@ -7,6 +7,11 @@
 set -uo pipefail
 GODOT="$1"; WIN="${2:-}"
 MODE="${JV_TEST_MODE:-generic}"
+
+
+
+if [ "$MODE" = models-merged ]; then MODE=models; JV_MODEL_ROOT=resources/packs; fi
+JV_MODEL_ROOT="${JV_MODEL_ROOT:-models}"; export JV_MODEL_ROOT
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 RUN="$(mktemp -d /tmp/jvtest.XXXX)"
 cp -r "$HERE/tests/fakegame/." "$RUN/"
@@ -19,7 +24,7 @@ if [ "$MODE" != plainhost ] && [ "$MODE" != plainclient ]; then
   if [ -n "$WIN" ]; then cp "$HERE"/bin/windows/*.dll "$RUN/mods/bin/"; else cp "$HERE"/bin/linux/*.so "$RUN/mods/bin/"; fi
   cp "$HERE/dist/game_dir/override.cfg" "$RUN/override.cfg"
 fi
-M="$RUN/_mods"; T="$M/resources/packs"; MD="$M/models"; mkdir -p "$T" "$M/shots" "$M/goofy"
+M="$RUN/_mods"; T="$M/resources/packs"; MD="$M/$JV_MODEL_ROOT"; mkdir -p "$T" "$M/shots" "$M/goofy"
 mkp() { mkdir -p "$T/$1/res/tex"; cp "$HERE/tests/fixtures/$3.png" "$T/$1/res/tex/ball.png"; echo "{\"id\":\"$2\",\"name\":\"$1\",\"kind\":\"$4\"}" > "$T/$1/skin.json"; }
 mkp ballpack BA11 red global
 mkp "cafe skin pack" CAFE green skin
@@ -50,6 +55,10 @@ echo '{"id":"10E3","name":"Env Bad Test","label":"Env Bad","type":"stage","previ
 mkdir -p "$T/env_missing_test"
 cp "$T/env_ok_test/court_floor.png" "$T/env_ok_test/preview.png" "$T/env_missing_test/"
 echo '{"id":"10E4","name":"Env Missing Mesh","label":"Env Missing","type":"stage","preview":"preview.png","base_stage":"grass","court":{"floor_tex":"court_floor.png"},"environment":{"mesh":"no_such_env.glb","hide_env_props":true,"hide_ground":true}}' > "$T/env_missing_test/skin.json"
+
+mkdir -p "$T/env_tutorial_base"
+cp "$T/env_ok_test/court_floor.png" "$T/env_ok_test/preview.png" "$T/env_ok_test/sky.png" "$T/env_ok_test/env.glb" "$T/env_tutorial_base/"
+echo '{"id":"10E5","name":"Tutorial Base Test","label":"Tutorial Base","type":"stage","preview":"preview.png","base_stage":"tutorial","court":{"floor_tex":"court_floor.png","floor_color":"#e8d2a0","line_color":"#f2f8ff"},"sky":{"panorama":"sky.png"},"environment":{"mesh":"env.glb","hide_env_props":true,"hide_ground":true,"baked_lighting":true}}' > "$T/env_tutorial_base/skin.json"
 mkdir -p "$T/cafe skin pack/add"; cp "$HERE/tests/fixtures/red.png" "$T/cafe skin pack/add/extra tex.png"
 
 MESH="$HERE/tests/fixtures/models/bean.glb"
@@ -67,13 +76,17 @@ case "$MODE" in loader*)
   mkdir -p "$T/space_court" "$T/bad_goofy_court"
   cp "$HERE/tests/fixtures/green.png" "$T/space_court/court_floor.png"; cp "$HERE/tests/fixtures/green.png" "$T/bad_goofy_court/court_floor.png"
   echo '{"id":"1022","name":"Space Court","type":"stage","base_stage":"grass","court":{"floor_tex":"court_floor.png"},"goofy":{"version":1,"ball.gravity":{"mul":0.4}}}' > "$T/space_court/skin.json"
-  echo '{"id":"1023","name":"Odd Goofy","type":"stage","base_stage":"grass","court":{"floor_tex":"court_floor.png"},"goofy":{"gravity_scale":0.5,"not.a.param":1}}' > "$T/bad_goofy_court/skin.json" ;;
+  echo '{"id":"1023","name":"Odd Goofy","type":"stage","base_stage":"grass","court":{"floor_tex":"court_floor.png"},"goofy":{"gravity_scale":0.5,"not.a.param":1}}' > "$T/bad_goofy_court/skin.json"
+
+  python3 "$HERE/tests/tools/make_hostile_packs.py" "$M" "res://_mods" "$HERE/tests/fixtures" loader ;;
 esac
 if [ "$MODE" = models ]; then
   F="$HERE/tests/fixtures/models"
   mkm() { mkdir -p "$MD/$1"; echo "$3" > "$MD/$1/skin.json"; [ -n "${4:-}" ] && cp -r $4 "$MD/$1/"; true; }
   mkm "aero glb" AE01 '{"kind":"model","id":"AE01","name":"bean glb","model":"bean.glb","game_hands":"tint"}' "$F/bean.glb"
-  mkm "aero tscn" AE02 '{"kind":"model","id":"AE02","name":"bean tscn","model":"bean.tscn","tint_light":{"sss_tint":0.5}}' "$F/bean.tscn $F/shaders"
+  mkm "aero two" AE02 '{"kind":"model","id":"AE02","name":"bean two","model":"bean.glb","tint_light":{"sss_tint":0.5}}' "$F/bean.glb"
+
+  mkm "aero tscn" AE03 '{"kind":"model","id":"AE03","name":"bean tscn","model":"bean.tscn"}' "$F/bean.tscn $F/shaders"
   mkm broken BAD1 '{"kind":"model","id":"BAD1","model":"corrupt.glb"}'; head -c 4000 /dev/urandom > "$MD/broken/corrupt.glb"
   mkm bones B0E5 '{"kind":"model","id":"B0E5","model":"badbones.glb"}' "$F/badbones.glb"
   mkm scripted 5C01 '{"kind":"model","id":"5C01","model":"scripted.tscn"}' "$F/scripted.tscn $F/scripts"
@@ -82,14 +95,17 @@ if [ "$MODE" = models ]; then
   mkm missing 4155 '{"kind":"model","id":"4155","model":"nope.glb"}'
   mkm "plump arms" BEA1 '{"kind":"model","id":"BEA1","name":"bean arms","model":"bean.glb","game_hands":"tint","arms":{"mode":"follow_hands","anchor_bone":"spine1","shoulder":[0.5,2.42,0.0],"upper":0.45,"lower":0.72,"radius":[0.15,0.16,0.155],"elbow_hint":[1.0,-0.5,-0.6]}}' "$F/bean.glb"
   mkm fixed F1C0 '{"kind":"model","id":"F1C0","model":"bean.glb","color":"#FF1A8C"}' "$F/bean.glb"
-  mkm "skin in models" 5C1A '{"kind":"skin","id":"5C1A","name":"not a model"}'
+  [ "$JV_MODEL_ROOT" = models ] && mkm "skin in models" 5C1A '{"kind":"skin","id":"5C1A","name":"not a model"}'
+  python3 "$HERE/tests/tools/make_hostile_packs.py" "$M" "res://_mods" "$HERE/tests/fixtures" models "$JV_MODEL_ROOT"
 fi
 case "$MODE" in
-  models) echo '{"equipped":["CAFE"]}' > "$T/equipped.json"; echo '{"equipped":["AE02"],"model":"AE01"}' > "$MD/equipped.json" ;;
+  models) if [ "$JV_MODEL_ROOT" = models ]; then echo '{"equipped":["CAFE"]}' > "$T/equipped.json"; echo '{"equipped":["AE02"],"model":"AE01"}' > "$MD/equipped.json"
+    else echo '{"equipped":["CAFE","AE02"],"model":"AE01"}' > "$T/equipped.json"; fi ;;
   nethost) mkp beef BEEF green skin; echo '{"equipped":["BEEF"]}' > "$T/equipped.json"
     if [ -n "${JV_CONTENT_SRC:-}" ]; then
       cp -r "$JV_CONTENT_SRC"/packs/. "$T/"; mkdir -p "$MD"; cp -r "$JV_CONTENT_SRC"/models/. "$MD/"
-      echo '{"equipped":["C001","C0DE","C0FF","C0EE"]}' > "$T/equipped.json"; echo '{"ball":"C0B1"}' > "$T/picker.json"; echo '{"model":"B0D1"}' > "$MD/equipped.json"
+      echo '{"equipped":["C001","C0DE","C0FF","C0EE"]}' > "$T/equipped.json"; echo '{"ball":"C0B1"}' > "$T/picker.json"
+      if [ "$JV_MODEL_ROOT" = models ]; then echo '{"model":"B0D1"}' > "$MD/equipped.json"; else echo '{"equipped":["C001","C0DE","C0FF","C0EE"],"model":"B0D1"}' > "$T/equipped.json"; fi
     fi ;;
   netclient) echo '{"equipped":["CAFE"]}' > "$T/equipped.json" ;;
   *) echo '{"equipped":["CAFE"]}' > "$T/equipped.json" ;;

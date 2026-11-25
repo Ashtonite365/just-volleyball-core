@@ -7,9 +7,11 @@ nothing about it is sent to other players.
 
 ## Pack layout
 ```
-mods/models/<pack>/skin.json
-mods/models/<pack>/<model>.glb | .gltf | .tscn | .scn   (+ any files it references)
-mods/models/equipped.json      {"model": "AE01"}   (own file; texture packs are not read)
+mods/resources/packs/<pack>/skin.json            {"kind": "model", ...}  (next to the texture packs)
+mods/resources/packs/<pack>/<model>.glb          (self-contained binary glTF only; docs/CONTENT-SECURITY.md)
+mods/resources/packs/equipped.json               {"equipped": [skins...], "model": "AE01"}
+mods/resources/packs/model_settings.json         (locker FULL MODEL tab settings)
+mods/models/...                                  old layout: still read as a fallback (docs/CONTENT-FOLDER.md)
 ```
 `skin.json`:
 ```json
@@ -33,7 +35,7 @@ mods/models/equipped.json      {"model": "AE01"}   (own file; texture packs are 
 | `hide_base` | true | hide the base character meshes while the model is on |
 | `apply_to` | `local` | `local` = only your own player (plus menu / locker presentation rigs); `all` = every player on your screen |
 | `flash` | true | mirror the game's hit flash (`flash`/`flash_color` shader params) |
-| `allow_scripts` | false | `.tscn`/`.scn` that contain or depend on scripts are refused unless true |
+| `allow_scripts` | false | ignored (warning): packs are data only, `.tscn`/`.scn`/`.gltf` models are always refused |
 
 **Which pack is used:** only the `"model"` key of `equipped.json` selects a model (one at a
 time). Model ids in `"equipped"` are ignored with a warning - the texture loader would send
@@ -67,9 +69,9 @@ vanilla. Changes apply live (`reload_config()`; the mods panel reloads it).
    `hands_animated()` is true.
 6. **Colours:** team colour is ignored (see below); the game's hit flash is still mirrored
    from the rig's materials.
-7. **Resources:** `.glb/.gltf` loaded with GLTFDocument from the pack folder; `.tscn/.scn`
-   via ResourceLoader from `res://mods/models/<pack>/...`, so relative
-   `ext_resource` shaders/textures resolve inside the pack folder.
+7. **Resources:** the `.glb` is read as bytes, sanitised (no URIs, allow-listed extensions,
+   no extras) and loaded with `GLTFDocument::append_from_buffer`; never ResourceLoader.
+   `.gltf`, `.tscn` and `.scn` are refused in both layouts (docs/CONTENT-SECURITY.md).
 8. **Eligibility:** the rig's nearest `Player` ancestor must be the local player
    (`texture_sync.json` `local_player_property` / `players_property`); rigs without a
    Player (menu, locker) get it; `apply_to:"all"` applies to everyone.
@@ -127,7 +129,7 @@ models library is on (cosmetic tier):
     `reset to model default`;
   * **hands:** `keep` / `hide` / `model colour` (`game_hands`);
   * **shown on:** `just me` / `everyone on my screen` (`apply_to`).
-* **Saved in** `mods/models/model_settings.json` (the mod's config, never game saves):
+* **Saved in** `mods/resources/packs/model_settings.json` (read fallback: old `mods/models/model_settings.json`) (the mod's config, never game saves):
   `{"version": 1, "models": {"AE1B": {"color": "#2F6BFF", "game_hands": "hide", "apply_to": "local"}}}`.
   Absent key = the pack's `skin.json` value. Written 0.5 s after the last change (picker drags)
   and when the locker closes.
@@ -186,7 +188,7 @@ re-snaps per frame. Seats are only recomputed when the measured body changes (mo
 - stock game accessories: their game placement + (model head top / back point - stock one)
 - a 2nd/3rd copy of the SAME item: hats stack +0.06 m, tails fan out +/-0.07 m
 
-Per-model override in `mods/models/model_settings.json`:
+Per-model override in `mods/resources/packs/model_settings.json` (old `mods/models/` copy read if that is missing):
 
 ```json
 { "models": { "BEA0": { "anchors": {

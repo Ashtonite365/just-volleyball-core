@@ -8,6 +8,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <vector>
@@ -18,6 +19,14 @@ struct LodSpec {
 	godot::String mesh_path;
 	float visible_begin = 0.0f;
 	float visible_end = 0.0f;
+};
+
+struct LightSpec {
+	godot::String type = "omni";
+	godot::Vector3 position = godot::Vector3(0, 0, 0);
+	godot::Color color = godot::Color(1.0f, 0.78f, 0.45f);
+	float energy = 3.5f;
+	float range = 30.0f;
 };
 
 struct EnvSpec {
@@ -33,6 +42,7 @@ struct EnvSpec {
 	bool baked_lighting = false;
 	bool sway = false;
 	std::vector<LodSpec> lods;
+	std::vector<LightSpec> lights;
 };
 
 void apply_env(godot::Node *scene, godot::Node *court, godot::Node *grass, const EnvSpec &env);

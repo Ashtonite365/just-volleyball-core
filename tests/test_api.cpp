@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
 	for (auto &c : caps) {
 		CHECK(ids.insert(c.id).second);
 		CHECK(std::regex_match(c.id, idre));
-		CHECK(std::string(c.since) == "1.0" || std::string(c.since) == "1.1" || std::string(c.since) == "1.2" || std::string(c.since) == "1.3");
+		CHECK(std::string(c.since) == "1.0" || std::string(c.since) == "1.1" || std::string(c.since) == "1.2" || std::string(c.since) == "1.3" || std::string(c.since) == "1.4");
 		CHECK(std::string(c.feature).size() > 10);
 		CHECK(std::string(c.functions).size() > 2);
 		CHECK(find(c.id) == &c);
@@ -90,14 +90,15 @@ int main(int argc, char **argv) {
 	}
 
 
-	CHECK(version_string() == "1.3.0");
+	CHECK(version_string() == "1.4.0");
 	CHECK(version_compatible("1"));
 	CHECK(version_compatible("1.0"));
 	CHECK(version_compatible("1.0.7"));
 	CHECK(version_compatible("1.1"));
 	CHECK(version_compatible("1.2"));
 	CHECK(version_compatible("1.3"));
-	CHECK(!version_compatible("1.4"));
+	CHECK(version_compatible("1.4"));
+	CHECK(!version_compatible("1.5"));
 	CHECK(!version_compatible("2.0"));
 	CHECK(!version_compatible("0.9"));
 	CHECK(!version_compatible(""));
@@ -217,7 +218,7 @@ int main(int argc, char **argv) {
 
 
 	{
-		const std::string core_md = slurp(repo + "/docs/API.md");
+		const std::string core_md = slurp(repo + "/docs/CORE-API.md");
 		CHECK(!core_md.empty());
 		std::string src = slurp(repo + "/src/core/mod_api.cpp") + slurp(repo + "/src/core/mod_api_core.cpp") + slurp(repo + "/src/core/mod_api_dev.cpp") + slurp(repo + "/src/core/gameplay_settings_api.cpp");
 		std::regex bm("D_METHOD\\(\"([a-z_]+)\"|BM\\(([a-z_]+)");
@@ -228,13 +229,13 @@ int main(int argc, char **argv) {
 			fns.insert(n);
 		}
 		int missing = 0;
-		for (auto &n : fns) if (core_md.find("`" + n + "(") == std::string::npos) { std::printf("API.md misses function %s\n", n.c_str()); missing++; }
+		for (auto &n : fns) if (core_md.find("`" + n + "(") == std::string::npos) { std::printf("CORE-API.md misses function %s\n", n.c_str()); missing++; }
 		CHECK(missing == 0);
 		CHECK(fns.size() >= 120);
 		for (const char *sig : { "access_changed", "event" }) CHECK(core_md.find(std::string("`") + sig + "(") != std::string::npos);
 		for (auto &e : events()) CHECK(core_md.find(std::string("`") + e.name + "`") != std::string::npos);
 		for (auto &c : caps) CHECK(core_md.find(std::string("`") + c.id + "`") != std::string::npos);
-		std::printf("API.md: %zu bound functions checked\n", fns.size());
+		std::printf("CORE-API.md: %zu bound functions checked\n", fns.size());
 	}
 
 
