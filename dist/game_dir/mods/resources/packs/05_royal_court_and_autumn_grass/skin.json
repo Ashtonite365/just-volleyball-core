@@ -1,0 +1,23 @@
+{
+  "id": "1005",
+  "name": "Royal Court & Autumn Grass",
+  "kind": "global",
+  "court": {
+    "floor_tex": "court_floor.png",
+    "floor_color": "#a54424",
+    "checker_color": "#803018",
+    "checker_size": 2.0,
+    "line_color": "#ffd633",
+    "grass_tex": "autumn_grass.png",
+    "grass_tint": "#e68822",
+    "grass_tip_color": "#ffd24c",
+    "grass_patch_color": "#b85014",
+    "grass_grad_top": "#ffb833",
+    "grass_grad_bottom": "#8c3b0e",
+    "hill_tint": "#c4621a"
+  },
+  "type": "stage",
+  "label": "Royal Court",
+  "preview": "preview.png",
+  "base_stage": "grass"
+}

@@ -1,0 +1,15 @@
+{
+  "_comment": "jvm_core settings. menu_perf: cheaper menu motion (same look and behaviour). On by default; set false to A/B against the stock menu path.",
+  "menu_perf": true,
+  "devtools": {
+    "_comment": "CORE developer tools (docs/DEVTOOLS.md). Everything off by default; the profiler and debugger are also reachable through the mod API.",
+    "debugger": false,
+    "hotkeys": "auto",
+    "profiler_key": "F6",
+    "console_key": "F11",
+    "overlay": true,
+    "profiler_seconds": 2.0,
+    "consts_audit": true,
+    "log_levels": {}
+  }
+}

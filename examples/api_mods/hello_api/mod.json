@@ -1,0 +1,2 @@
+{ "name": "hello_api", "api_version": "1.1", "enabled": true,
+  "_comment": "Example script mod for the jv-mods CORE API (docs/CORE-API.md). Copy this folder to <game>/mods/api_mods/hello_api to try it." }

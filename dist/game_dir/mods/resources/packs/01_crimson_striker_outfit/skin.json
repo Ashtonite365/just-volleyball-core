@@ -1,0 +1,45 @@
+{
+  "id": "1001",
+  "name": "Crimson Candy Outfit",
+  "kind": "skin",
+  "outfit": {
+    "tint_mode": "replace",
+    "slots": {
+      "jersey": "jersey.png",
+      "jerseyfront": "jersey.png",
+      "jerseyback": "jersey.png",
+      "jerseycollar": {
+        "color": "#141c34"
+      },
+      "accent": {
+        "color": "#facd37"
+      },
+      "shorts": "shorts.png",
+      "pants_accent": {
+        "color": "#facd37"
+      },
+      "pantshem": {
+        "color": "#b9162a"
+      },
+      "pantswaist": {
+        "color": "#facd37"
+      },
+      "socks": {
+        "color": "#ffffff"
+      },
+      "kneepad": {
+        "color": "#141c34"
+      },
+      "shoes": "shoes.png",
+      "body": {
+        "color": "#C4142E"
+      },
+      "skin": {
+        "color": "#C4142E"
+      },
+      "all": {
+        "color": "#C4142E"
+      }
+    }
+  }
+}

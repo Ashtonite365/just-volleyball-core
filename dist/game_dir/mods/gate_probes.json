@@ -1,0 +1,9 @@
+{
+  "_comment": "Allowlist gate probes for just volleyball (Godot 4.7.1 custom build). jv_net reads the game's own Net/GameConfig autoloads and the current scene (menu.gd / main.gd) - see docs/GATE.md for file:line references. multiplayer_peer vetoes LAN/offline claims if a network peer exists. No memory addresses. Anything undetermined -> mods OFF.",
+  "max_age_s": 2.0,
+  "probes": [
+    { "type": "jv_net", "name": "jv-net", "authoritative": true, "net": "/root/Net", "game_config": "/root/GameConfig",
+      "menu_scene": "res://game/ui/menu.tscn", "main_scene": "res://game/main/main.tscn" },
+    { "type": "multiplayer_peer", "name": "net-peers" }
+  ]
+}

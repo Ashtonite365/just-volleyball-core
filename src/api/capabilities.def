@@ -1,0 +1,128 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+JV_CAP("api.info", "1.0", READ, LOCAL, IMPL, "API version, capability list and live gate status", "-", "get_api_version, get_capabilities, has_capability, can, why_not, get_status, get_coverage")
+JV_CAP("api.mods", "1.0", READ, LOCAL, IMPL, "Mod registration: each mod declares the capabilities it uses; undeclared calls are refused", "-", "register_mod, get_mods, library_allowed")
+JV_CAP("gate.mode", "1.0", READ, LOCAL, IMPL, "Detected play mode (Free Play/practice/offline/LAN/private/friends/public/quick match/menu) and which access classes are open", "game/net/net.gd:76 active; game/net/net.gd:84 custom_lobby; game/net/net.gd:88 party_lan; game/net/net.gd:2741 privacy; game/core/game_config.gd:506 quick_match; game/core/game_config.gd:2021 net_roster; game/ui/menu.gd:197 _practice_solo; game/ui/menu.gd:451 _drill_active; game/ui/menu.gd:107 _freeplay", "get_mode, is_open, get_reason, gate_matrix, net_safety, signal access_changed, event mode_changed")
+JV_CAP("config.files", "1.0", LOCAL_UI, LOCAL, IMPL, "Read the mods folder JSON configs (mods/<category>/*.json merged by file name)", "-", "load_config, mods_dir")
+
+
+JV_CAP("scene.current", "1.0", READ, LOCAL, IMPL, "The running game scene (main match scene, menu, practice court)", "game/main/main.gd:217 player; game/ui/menu.gd:74 player", "get_current_scene, event scene_changed")
+JV_CAP("scene.balls", "1.0", READ, LOCAL, IMPL, "Every ball in the scene (class Ball)", "game/ball/ball.gd:1 Ball", "find_balls")
+JV_CAP("scene.players", "1.0", READ, LOCAL, IMPL, "Every player in the scene (class Player) and the local player", "game/player/player.gd:1 Player; game/main/main.gd:217 player; game/main/main.gd:497 _peer_players", "find_players, get_local_player")
+JV_CAP("scene.rally", "1.0", READ, LOCAL, IMPL, "The rally judge that owns a player (main scene, also embedded in the practice court)", "game/main/main.gd:249 _rally; game/ui/practice_court.gd:54 main", "get_rally_for")
+JV_CAP("scene.stage", "1.0", READ, LOCAL, IMPL, "Current stage/court nodes (Stage, Court, CourtFloor, Grass, Net, Backdrop)", "game/stage/stage.gd:1 Stage; game/core/court.gd:1 Court", "stage_get_nodes")
+
+
+JV_CAP("net.state", "1.0", READ, LOCAL, IMPL, "Online session state: active, host, Steam lobby id, LAN party, custom lobby, privacy, match / lobby practice running", "game/net/net.gd:76 active; game/net/net.gd:77 is_host; game/net/net.gd:861 steam_lobby_id; game/net/net.gd:88 party_lan; game/net/net.gd:84 custom_lobby; game/net/net.gd:2741 privacy; game/net/net.gd:78 in_match; game/net/net.gd:152 practice_live", "get_net_state")
+JV_CAP("net.lobby_data", "1.0", SYNC, PEERS, IMPL, "Steam lobby data keys owned by mods (host writes, members read), e.g. jvm_rules", "game/net/net.gd:941 setLobbyData; game/net/net.gd:861 steam_lobby_id", "lobby_data_get, lobby_data_set")
+JV_CAP("net.member_data", "1.0", SYNC, PEERS, MAPPED, "Steam lobby MEMBER data (texture sync fallback key jvm_skins)", "game/net/net.gd:861 steam_lobby_id; game/net/net.gd:284 players", "game_call on Steam (generic); texture_loader today")
+JV_CAP("net.packets", "1.0", SYNC, PEERS, MAPPED, "Raw SceneMultiplayer bytes between modded peers (JVMS packets; never the game's own RPCs)", "game/net/net.gd:3004 _c_hello", "texture_loader today (send_bytes / peer_packet)")
+JV_CAP("net.party_ball", "1.0", SYNC, HOST, MAPPED, "Send the picked ball skin to the party (game's own function)", "game/net/net.gd:5491 send_party_ball", "picker_ui today")
+JV_CAP("net.game_signals", "1.0", READ, LOCAL, IMPL, "Observe the game's network signals (lobby_changed, match_started, peer_left_match, ...); the game's @rpc functions are never called by mods", "game/net/net.gd:10 lobby_changed; game/net/net.gd:17 match_started; game/net/net.gd:22 peer_left_match", "connect_net_signal (session/lobby/party signals only), game_connect")
+JV_CAP("net.content_offer", "1.2", SYNC, PEERS, IMPL, "Cosmetic sharing: every modded peer advertises what it wears (outfit, accessories, ball, court, model: id + SHA-256 + size) in JVMS packets on join and on every change; others render it (ball / court follow the host)", "game/net/net.gd:3004 _c_hello; game/main/main.gd:497 _peer_players", "content_status (library: textures)")
+JV_CAP("net.content_download", "1.2", SYNC, PEERS, IMPL, "Missing advertised items are fetched from the embedded assets repo only (manifest v1; pack.zip SHA-256 + size checked, PNG / JSON / glb only, no path traversal), cached under mods/resources/cache and loaded live; never code; works offline", "-", "content_fetch, content_status (library: textures)")
+
+
+JV_CAP("ball.physics", "1.0", GAMEPLAY, LOCAL, IMPL, "The shared BallPhysics resource (radius = real hitbox, gravity, floor_bounce, any exported field)", "game/ball/ball.gd:10 PHYS; game/ball/ball_physics.gd:9 radius; game/ball/ball_physics.gd:11 gravity; game/ball/ball_physics.gd:26 floor_bounce", "ball_physics_available, ball_physics_get, ball_physics_set")
+JV_CAP("ball.model", "1.0", READ, LOCAL, IMPL, "The ball's dressed visual model (sized from PHYS.radius when dressed)", "game/ball/ball.gd:271 _model; game/ball/ball.gd:778 _dress_model", "ball_get_model")
+JV_CAP("ball.scale", "1.0", GAMEPLAY, LOCAL, IMPL, "Ball node scale (visual size to match a changed radius)", "game/ball/ball.gd:778 _dress_model", "node_get_scale, node_set_scale")
+JV_CAP("ball.flight", "1.0", GAMEPLAY, LOCAL, IMPL, "Ball flight state: velocity, curve, dive gravity, strike sequence, hitter", "game/ball/ball.gd:74 vel; game/ball/ball.gd:81 curve; game/ball/ball.gd:104 dive_g; game/ball/ball.gd:80 strike_seq; game/ball/ball.gd:70 hit_by", "ball_get_flight, ball_set_flight")
+JV_CAP("ball.float", "1.0", GAMEPLAY, LOCAL, MAPPED, "Float serve/shot wobble (start_float, stop_float, float_seed_for, solve_float)", "game/ball/ball.gd:1558 start_float; game/ball/ball.gd:1565 stop_float; game/ball/ball.gd:1573 float_seed_for", "shots today")
+JV_CAP("ball.solver", "1.0", READ, LOCAL, MAPPED, "The game's own trajectory maths (solve_launch, step_flight, landing prediction)", "game/ball/ball.gd:1017 solve_launch; game/ball/ball.gd:2244 step_flight; game/ball/ball.gd:646 _predict_land_curved", "shots today")
+JV_CAP("ball.struck", "1.0", READ, LOCAL, IMPL, "Ball contact event struck(pos, power, kind), emitted at the end of Ball.hit", "game/ball/ball.gd:14 struck; game/ball/ball.gd:1168 hit", "connect_ball_struck, connect_ball_event(struck)")
+JV_CAP("ball.events", "1.0", READ, LOCAL, IMPL, "Other ball events: bounced, net_hit, wall_hit, antenna_hit", "game/ball/ball.gd:13 bounced; game/ball/ball.gd:15 net_hit; game/ball/ball.gd:19 antenna_hit", "connect_ball_event")
+JV_CAP("ball.skin", "1.0", COSMETIC, LOCAL, IMPL, "Ball look: the game's ball skins and our custom ball material (equirect texture)", "game/ball/ball.gd:681 set_ball_skin; game/core/game_config.gd:1331 menu_ball", "ball_set_picked (custom ball packs), packs_list(ball)")
+JV_CAP("ball.landing_marker", "1.0", COSMETIC, LOCAL, MAPPED, "Landing marker / spread ring and the float-box shards used by the shot indicators", "game/ball/ball.gd:322 _land_shell; game/ball/ball.gd:321 _land_predict; game/ball/ball.gd:329 _predict_spread", "shots today")
+
+
+JV_CAP("player.touched", "1.0", READ, LOCAL, IMPL, "Player touch event touched(kind), after the rally judged it", "game/player/player.gd:126 touched; game/main/main.gd:12288 _on_touched", "connect_player_touched, connect_player_event(touched)")
+JV_CAP("player.events", "1.0", READ, LOCAL, IMPL, "Other player events: swung, launched, jumped, callout_made, high_fived, block_broken, dove_into_net", "game/player/player.gd:130 swung; game/player/player.gd:147 launched; game/player/player.gd:151 jumped", "connect_player_event")
+JV_CAP("player.scale", "1.0", GAMEPLAY, LOCAL, IMPL, "Player node scale (goofy player_scale)", "game/player/player.gd:1 Player", "node_get_scale, node_set_scale")
+JV_CAP("player.input_state", "1.0", READ, LOCAL, IMPL, "What the player is doing: serving, contact state, aim point, hold power, grounded, team side", "game/player/player.gd:339 serving; game/player/player.gd:574 contact_state; game/player/player.gd:579 aim_point; game/player/player.gd:3455 hold_power; game/player/player.gd:954 grounded; game/player/player.gd:276 team_side", "player_get_state")
+JV_CAP("player.input", "1.0", READ, LOCAL, MAPPED, "Input actions and the game's input collector (camera-relative move, hitter frame)", "game/core/input_collector.gd:509 _camera_relative_move; game/core/input_collector.gd:480 _hitter_frame_stick; game/core/input_binds.gd:126 _register_code_actions", "shots today")
+JV_CAP("player.feel", "1.0", READ, LOCAL, IMPL, "PlayerFeel tuning resource (read by the shots maths)", "game/player/player_feel.gd:1 PlayerFeel", "player_feel_get (writes: goofy.ball capability, FEEL params)")
+JV_CAP("player.model", "1.0", COSMETIC, LOCAL, IMPL, "Custom full player model grafted onto the game's rig (model_hook)", "game/character/model_rig.gd:542 model_hook; game/character/presentation_character.gd:1 PresentationCharacter", "model_preview, model_apply, model_end_preview, model_set_color, model_reset_color, model_set_option")
+JV_CAP("player.look", "1.0", COSMETIC, LOCAL, MAPPED, "Player look data: skin colour, jersey, hands", "game/character/model_rig.gd:6790 skin_color; game/player/player.gd:8045 hand_local", "models/textures today")
+JV_CAP("player.outfit", "1.0", COSMETIC, LOCAL, MAPPED, "Outfit textures per surface slot (jersey/shorts/shoes) and 3D accessories on bones", "game/character/model_rig.gd:512 _surface_slots", "textures today")
+
+
+JV_CAP("rules.touch_count", "1.0", GAMEPLAY, HOST, IMPL, "Touches per side: read the rally's count/side, rewrite the count (host enforces; clients get it in player state)", "game/core/rally.gd:155 touch_count; game/core/rally.gd:156 touch_side; game/core/rally.gd:101 practice; game/core/rally.gd:898 judge_touch", "rally_touch_state, rally_set_touch_count")
+JV_CAP("rules.double_hit", "1.0", GAMEPLAY, HOST, IMPL, "Allow one player to touch twice in a row (clear last_toucher before the CONSECUTIVE check)", "game/core/rally.gd:157 last_toucher; game/core/rules.gd:51 bar_reason", "rally_clear_last_toucher")
+JV_CAP("rules.modifiers_panel", "1.0", GAMEPLAY, LOCAL, IMPL, "Rows in the game's custom-lobby Modifiers panel", "game/ui/lobby/modifiers_panel.gd:1 ModifiersPanel; game/ui/lobby/modifiers_panel.gd:153 _entry_row; game/ui/lobby/modifiers_panel.gd:144 _rule; game/ui/lobby/modifiers_panel.gd:16 changed; game/ui/lobby/modifiers_panel.gd:34 _rows; game/ui/lobby/modifiers_panel.gd:42 _quiet", "modifiers_panel_find, modifiers_panel_add_rows, modifiers_panel_set_values, modifiers_panel_show_rows")
+
+
+JV_CAP("engine.time_scale", "1.0", GAMEPLAY, LOCAL, IMPL, "Engine.time_scale (slow-mo / fast-mo), this PC; in LAN / private / friends matches Goofy host sync applies the host's value", "-", "time_scale_get, time_scale_set")
+JV_CAP("engine.overrides", "1.0", GAMEPLAY, LOCAL, IMPL, "Reversible property overrides on game nodes picked by group/path/script class (goofy 'overrides')", "-", "overrides_apply, overrides_revert")
+JV_CAP("game.generic", "1.0", GAMEPLAY, LOCAL, IMPL, "Escape hatch for everything in docs/GAME_SURFACE.md without a semantic function yet: get/set a property, call a method, connect a signal. Logged per mod; never the game's @rpc functions", "-", "game_get, game_set, game_call, game_connect")
+
+
+JV_CAP("stage.court_look", "1.0", COSMETIC, LOCAL, IMPL, "Court floor, grass, hills and backdrop materials (court reskins)", "game/stage/stage.gd:1 Stage", "stage_set_picked, cosmetics_apply (court floor/grass/net/backdrop from a stage pack)")
+JV_CAP("stage.net_look", "1.0", COSMETIC, LOCAL, IMPL, "Net tape/cord/post/pad colours and textures", "game/core/court.gd:1 Court", "stage_set_picked, cosmetics_apply (net{} block of a stage/global pack)")
+JV_CAP("stage.picker", "1.0", LOCAL_UI, LOCAL, IMPL, "Free Play stage + ball picker tiles (custom courts/balls)", "game/ui/menu.gd:1150 _fp_picker; game/ui/menu.gd:114 _ball_skin", "picker_ball_open, picker_stage_inject")
+JV_CAP("stage.lobby_picker", "1.0", LOCAL_UI, HOST, PLANNED, "Lobby stage list (custom courts in lobbies, host pick for everyone)", "game/ui/lobby/stage_banner.gd:1 StageBanner; game/stage/stage.gd:1245 lobby_ids", "(planned)")
+
+
+JV_CAP("ui.menu", "1.0", LOCAL_UI, LOCAL, MAPPED, "Main menu card and bottom-bar injection (Mods button, credits)", "game/ui/menu.gd:2806 _card_btn; game/ui/menu.gd:2359 _tint_button; game/ui/menu.gd:344 _bottom_bar", "menu_ui today")
+JV_CAP("ui.style", "1.0", READ, LOCAL, MAPPED, "The game's UiStyle builders (style_button, card_box, rail_tile, font, icon, sfx)", "game/ui/style/ui_style.gd:1 UiStyle; game/ui/style/ui_style.gd:128 style_button; game/ui/style/ui_style.gd:1118 rail_tile", "menu_ui/picker_ui/model_tab today")
+JV_CAP("ui.locker", "1.0", LOCAL_UI, LOCAL, MAPPED, "Locker tabs (full model tab, accessory slots)", "game/character/locker.gd:169 _content; game/character/locker.gd:1485 _group_header; game/character/locker.gd:1825 _choice_grid", "model_tab today")
+JV_CAP("ui.notify", "1.0", LOCAL_UI, LOCAL, MAPPED, "The game's toast notifications", "game/core/achievements.gd:115 notify", "picker_ui today")
+
+
+
+JV_CAP("lib.status", "1.1", READ, LOCAL, IMPL, "Which mod libraries/subsystems are installed and their status (loader, textures, models, shots, goofy, menu UI, menu perf, picker)", "-", "libraries_status, library_status")
+JV_CAP("lib.reload", "1.1", LOCAL_UI, LOCAL, IMPL, "Re-read a library's config files from the mods folder (same as the Mods panel reload)", "-", "library_reload")
+JV_CAP("config.state", "1.1", LOCAL_UI, LOCAL, IMPL, "Per-mod persistent key/value state (mods/api/state/<mod>.json, atomic write)", "-", "state_get, state_set, state_erase, state_keys")
+JV_CAP("config.validate", "1.1", READ, LOCAL, IMPL, "Validate a config dictionary against a library's schema (shots, goofy)", "-", "config_validate")
+JV_CAP("events.bus", "1.1", READ, LOCAL, IMPL, "Event bus: subscribe to API events (mode, scene, picks, loader map, model, menu perf, goofy relays); each event also needs its own capability", "-", "events_list, subscribe, unsubscribe, signal event")
+JV_CAP("packs.query", "1.1", READ, LOCAL, IMPL, "Pack registry (stage / ball / skin packs), current picks, texture status, sync status and texture cache", "-", "packs_list, pack_info, stage_get_picked, ball_get_picked, textures_status, textures_sync_status, textures_cache_info, texture_get_cached")
+JV_CAP("packs.rescan", "1.1", LOCAL_UI, LOCAL, IMPL, "Re-read the pack folders so new packs appear (unchanged images come from the cache)", "-", "packs_rescan")
+JV_CAP("stage.pick", "1.1", COSMETIC, LOCAL, IMPL, "Pick a custom court (stage pack) and apply picked cosmetics now; refresh the unified loader", "game/stage/stage.gd:1 Stage; game/ui/menu.gd:1150 _fp_picker", "stage_set_picked, cosmetics_apply, loader_refresh, court_env_load")
+JV_CAP("ball.pick", "1.1", COSMETIC, LOCAL, IMPL, "Pick a custom ball (ball pack)", "game/ball/ball.gd:681 set_ball_skin", "ball_set_picked")
+JV_CAP("court.query", "1.1", READ, LOCAL, IMPL, "Court environment (environment{} GLB around the court) and distant sky (sky{}) status and a pack's blocks", "-", "court_env_status, court_sky_status, court_env_info")
+JV_CAP("court.env", "1.1", COSMETIC, LOCAL, IMPL, "Load a court with its environment GLB + sky (pick + apply; clearance-checked by the loader)", "game/stage/stage.gd:1 Stage; game/core/court.gd:1 Court", "court_env_load")
+JV_CAP("accessories.query", "1.1", READ, LOCAL, IMPL, "Locker accessories from packs (Head / Face / Extra), what is worn, unplaced ids", "game/character/locker.gd:169 _content", "accessories_status, accessories_list")
+JV_CAP("models.query", "1.1", READ, LOCAL, IMPL, "Custom player models: list, saved pick, shown model, preview state, per-model settings, rig report", "game/character/model_rig.gd:542 model_hook", "models_list, model_get_saved, model_get_shown, model_is_previewing, model_settings_get, models_status, models_rig_report")
+JV_CAP("loader.query", "1.1", READ, LOCAL, IMPL, "Unified loader: status, goofy bridge, loader maps, a map's goofy block", "-", "loader_status, loader_bridge_status, loader_is_map, loader_active_map, loader_map_goofy_block")
+JV_CAP("goofy.query", "1.1", READ, LOCAL, IMPL, "Goofy ball + player libraries: schemas (ball 156: BallPhysics x124, PlayerFeel contact x27, flight x5; player 195), effective/stock values, layers, Ball override mode, rules, live ball / player state, cosmetics state, host sync status", "game/ball/ball.gd:10 PHYS; game/player/player.gd:18 FEEL", "goofy_available, goofy_api_version, goofy_schema, goofy_param_info, goofy_param_get, goofy_params, goofy_stock, goofy_layers, goofy_ball_mode_get, goofy_loader_map, goofy_physics_allowed, goofy_status, goofy_rules_get, goofy_ball_schema, goofy_player_schema, goofy_balls, goofy_ball_state, goofy_players, goofy_player_state, goofy_player_cosmetics, goofy_sync_status")
+JV_CAP("goofy.ball", "1.1", OFFLINE, LOCAL, IMPL, "Set / clear this mod's Goofy BALL layer (any of the 156 ball-library params; owner mod:<name>, priority 0..899). Live only offline; kept and re-applied when offline again", "game/ball/ball.gd:10 PHYS; game/player/player.gd:18 FEEL", "goofy_set_override, goofy_clear_override")
+JV_CAP("goofy.packs", "1.1", GAMEPLAY, LOCAL, IMPL, "Loader-map goofy sections handed to the goofy library (its pack layer + loader map); goofy itself decides when they are live", "-", "goofy_bridge_info, goofy_loader_map_set, goofy_pack_apply, goofy_pack_clear")
+JV_CAP("goofy.ball_mode", "1.1", LOCAL_UI, LOCAL, IMPL, "Ball override NORMAL / FIXED on loader maps (saved preference)", "-", "goofy_ball_mode_set")
+JV_CAP("goofy.rules", "1.1", GAMEPLAY, HOST, IMPL, "Goofy rules: max hits per team and no-double-hit (host-enforced, shown in the Modifiers panel)", "game/core/rally.gd:155 touch_count; game/core/rally.gd:157 last_toucher", "goofy_rules_set")
+
+JV_CAP("player.tuning", "1.2", GAMEPLAY, LOCAL, IMPL, "PlayerFeel writes: movement, jump, sprint / stamina, dive, block, serve, animation and contact timing (the Goofy player library; host-synced in LAN / private / friends)", "game/player/player.gd:18 FEEL; game/player/player_feel.gd:9 move_speed", "(library IO: goofy)")
+JV_CAP("player.consts", "1.2", GAMEPLAY, LOCAL, IMPL, "Player consts: the 34 gameplay values hard-coded in player.gd (made static vars at boot, match-wide). Edit in the lobby only; frozen for the whole match (mid-match writes return an error); the host sends its set to every player at match start. REQUIRES player.consts (same game build) on EVERY player: if anyone lacks it the whole match plays stock and the host is told who", "game/player/player.gd:25 COMBO_SPIKE_BONUS; game/player/player.gd:4821 SET_DUMP_SHORT; game/player/player.gd:5862 BLOCK_TURN", "player_consts_get, player_consts_set, player_consts_reset, player_consts_locked")
+JV_CAP("goofy.player", "1.2", OFFLINE, LOCAL, IMPL, "Set / clear this mod's Goofy PLAYER layer (player library params incl. player.body_scale; owner mod:<name>:player). Live offline; kept and re-applied when offline again", "game/player/player.gd:18 FEEL; game/player/player.gd:1 Player", "goofy_player_set_override, goofy_player_clear_override")
+JV_CAP("goofy.ball_live", "1.2", OFFLINE, LOCAL, IMPL, "Live writes on a ball in flight: velocity, curve, impulse (unsynced, so offline only)", "game/ball/ball.gd:74 vel; game/ball/ball.gd:81 curve", "goofy_ball_set_velocity, goofy_ball_set_curve, goofy_ball_impulse")
+JV_CAP("goofy.events", "1.2", READ, LOCAL, IMPL, "Ball and player game events relayed by Goofy with ball / player index (bounced, struck, net_hit, ..., swung, jumped, launched, dove_into_net, ...)", "game/ball/ball.gd:13 bounced; game/player/player.gd:130 swung", "events goofy_ball_event, goofy_player_event")
+JV_CAP("goofy.host_sync", "1.2", SYNC, HOST, IMPL, "Host-authoritative Goofy gameplay: the host publishes its gameplay ball + player params and time scale to modded peers (JVGF packets v2, clamped on receive); clients apply them from match start to match end, visual-only params stay local", "-", "(library: goofy; status via goofy_sync_status)")
+
+JV_CAP("gameplay.settings", "1.3", GAMEPLAY, HOST, IMPL, "Gameplay settings registry and read hook: mods register settings that change play (id mod.setting, type, default, range, label, tooltip, category; sync class gameplay only, visual-only refused) at config setup; every read goes through gameplay_get (stock while gameplay is closed, the host's value for clients in LAN / private / friends lobbies, else the local value; always clamped); values saved per mod with versioned migration; controls auto-built in the game's Settings panel (mods tab)", "game/ui/settings_panel.gd:1 SettingsPanel; game/ui/settings_panel.gd:122 _tabs; game/ui/settings_panel.gd:1073 _tab; game/ui/settings_panel.gd:921 _subheader; game/ui/settings_panel.gd:1190 _check; game/ui/settings_panel.gd:1228 _select; game/ui/settings_panel.gd:1252 _range", "gameplay_register, gameplay_register_setting, gameplay_unregister, gameplay_get, gameplay_get_all, gameplay_set, gameplay_reset, gameplay_list, gameplay_info, gameplay_role")
+JV_CAP("gameplay.settings_sync", "1.3", SYNC, HOST, IMPL, "Host broadcast hooks for the gameplay settings registry: the host exports its effective values (dictionary / JVGS bytes / hash), clients apply the host's payload (validated, unknown ids ignored, clamped); match-wide missing-mod rule: players' gameplay mod lists, decided at match start (a mod any player lacks is off for everyone, host included; texture mods never), settings locked for the match, loader warning; the transport belongs to the host-sync library", "-", "gameplay_manifest_bytes, gameplay_set_peer_manifest, gameplay_remove_peer, gameplay_match_start, gameplay_match_end, gameplay_set_host_manifest, gameplay_snapshot, gameplay_snapshot_bytes, gameplay_apply_snapshot, gameplay_clear_host")
+JV_CAP("game.rules", "1.3", GAMEPLAY, HOST, IMPL, "Game rules on the host's rally judge (clients never judge): team touches (four-touches fault, point to the other team), one player's consecutive touches (CONSECUTIVE bar), block / body block reset, PlayerFeel.block_classic; stock restored on revert", "game/core/rules.gd:13 TOUCHES_PER_SIDE; game/core/rules.gd:63 last_toucher; game/core/rally.gd:155 touch_count; game/core/rally.gd:157 last_toucher; game/core/rally.gd:590 pre_tick; game/core/rally.gd:898 judge_touch; game/core/rally.gd:1113 touch_count; game/player/player_feel.gd:572 block_classic", "game_rules_info, game_rules_state")
+JV_CAP("shots.query", "1.1", READ, LOCAL, IMPL, "Extra shots / curve: shot ids, armed shot, last spin / topspin / curve / float / event, spin bar, range box, counters, status", "game/ball/ball.gd:81 curve; game/ball/ball.gd:1558 start_float", "shots_list, shots_armed, shots_last, shots_spin_bar, shots_range_box, shots_counts, shots_status")
+JV_CAP("shots.arm", "1.1", GAMEPLAY, LOCAL, IMPL, "Arm an extra shot for the next contact", "game/ball/ball.gd:1168 hit", "shot_arm")
+JV_CAP("shots.debug", "1.1", LOCAL_UI, LOCAL, IMPL, "Shots debug overlay on/off and its text", "-", "shots_debug_set, shots_debug_visible, shots_debug_text")
+JV_CAP("ui.mods_panel", "1.1", LOCAL_UI, LOCAL, IMPL, "Our Mods panel in the main menu: open/close, list/detail page, config files, validate + save a config", "game/ui/menu.gd:2806 _card_btn", "mods_panel_open, mods_panel_close, mods_panel_show_list, mods_panel_show_detail, mods_panel_info, mods_config_files, mods_config_save")
+JV_CAP("menu.perf", "1.1", LOCAL_UI, LOCAL, IMPL, "Menu perf toggle (cheaper menu motion, same look; mods/core/00-default.json menu_perf) and its counters", "game/ui/menu.gd:253 _tilt; game/ui/menu.gd:256 _lean", "menu_perf_get, menu_perf_set, menu_perf_info, menu_perf_reset")
+
+
+JV_CAP("dev.profiler", "1.3", READ, LOCAL, IMPL, "Frame profiler: capture N seconds (default 2) of frames with per-stage timings (physics, process, render, every CORE / library hook), JSON + CSV under user://jv_profiler/, summaries, worst frames, hitches", "-", "profiler_start, profiler_stop, profiler_toggle, profiler_status, profiler_last_capture, profiler_summary, profiler_worst_frames, profiler_hitches")
+JV_CAP("dev.debugger", "1.3", LOCAL_UI, LOCAL, IMPL, "CORE debugger (off by default): per-library log levels, capability / library status dump, inspect our own nodes, event trace, in-game console", "-", "debug_set_enabled, debug_is_enabled, debug_set_log_level, debug_log_levels, debug_capabilities, debug_tree, debug_node, debug_trace, debug_trace_clear, debug_dump, debug_console_toggle")
+JV_CAP("player.consts_check", "1.3", READ, LOCAL, IMPL, "Altered-player-script checker for the player.consts bypass: flags writes to names still const, out of clamp / type, never-change names, non-host writes in synced lobbies, writes while unavailable, any mid-match write (values frozen for the match), client values differing from the host's start-of-match set, and folded copies in other scripts", "game/player/player.gd:1 Player", "consts_live, consts_status, consts_check_write, consts_audit, consts_findings, consts_clear_findings, consts_set_host_values")
