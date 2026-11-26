@@ -81,9 +81,16 @@ vanilla. Changes apply live (`reload_config()`; the mods panel reloads it).
    `player` property, which used to match the local-player heuristic, so the title crowd and every
    menu card wore the model. A PresentationCharacter now counts as "me" only when its
    `character` is `GameConfig.character` or has the same `look_dict()` (ignoring `"h"`, which
-   the menu card overrides). Match players keep the old rule (only the local Player). Arms are
-   grafted by the same code, so they follow the same rule. Texture packs do not go through this
-   path and are unchanged.
+   the menu card overrides). The main-menu and profile pictures come from a separate
+   `CharacterPortrait` player (`character_portrait.gd`): a process-disabled `Player` in a
+   transparent `own_world_3d` SubViewport under the tree root, not `menu.player`. That display
+   used to fail `is_eligible` (it is not the scene's `player` / `_peer_players` entry and is
+   not a `PresentationCharacter`), so the 3D court character could show the model while the
+   menu portrait stayed vanilla. It now counts as "me" under the same `look_dict()` rule, and
+   the eligibility check is redone every frame for that rig so a portrait capture (a few
+   frames after `set_character`) is not missed. Match players keep the old rule (only the
+   local Player). Arms are grafted by the same code, so they follow the same rule. Texture
+   packs apply to that portrait through the same look check (see SKINS.md).
 9. **Fallback:** any error (bad file, missing bone, scripts, path escape, missing file,
    invalid json) -> vanilla for that pack, logged once to `jv_mods.log` and shown in
    `status.json` (`models` section: state, equipped, applied, fallbacks, last_error, warnings).

@@ -1,6 +1,8 @@
 #include <godot_cpp/classes/time.hpp>
 #include "texture_loader.hpp"
+#include "../common/display_avatar.hpp"
 #include "safe_load.hpp"
+#include <godot_cpp/classes/script.hpp>
 #include "gate/safe_content.hpp"
 #include "accessory_anchor.hpp"
 #include "../common/jv_prof.hpp"
@@ -124,7 +126,7 @@ static void set_albedo_tex(const Ref<BaseMaterial3D> &bm, const Ref<Texture2D> &
 
 static const char *const kTexturesCaps[] = { "gate.mode", "config.files", "scene.current", "scene.balls", "scene.players",
 	"scene.stage", "net.state", "net.member_data", "net.packets", "net.content_offer", "net.content_download", "ball.model", "ball.physics", "ball.skin", "player.model",
-	"player.look", "player.outfit", "stage.court_look", "stage.net_look", "court.env", "models.query", "ui.locker" };
+	"player.look", "player.outfit", "stage.court_look", "stage.net_look", "court.env", "models.query", "ui.locker", "ui.menu" };
 
 static bool core_sync_open() { godot::Object *a = jvm_textures_io().api(); return a && bool(a->call("is_open", "sync")); }
 static godot::String core_mode(const char *dflt) { godot::Object *a = jvm_textures_io().api(); return a ? godot::String(a->call("get_mode")) : godot::String(dflt); }
@@ -870,6 +872,8 @@ void JVTextureLoader::apply() {
 	apply_scene_cosmetics(true);
 	sync_locker_accessories();
 	refresh_players();
+	refresh_display_avatars();
+	request_menu_portrait_refresh();
 	invalidate_status_cache();
 }
 
@@ -2166,6 +2170,54 @@ void JVTextureLoader::sync_outfit_bindings() {
 	}
 }
 
+void JVTextureLoader::refresh_display_avatars() {
+	if (!get_tree()) return;
+	std::vector<Node *> portraits;
+	jvm::collect_portrait_players(get_tree()->get_root(), portraits);
+	bool any = false;
+	for (Node *pl : portraits) {
+		if (!jvm::display_looks_like_me(jvm_textures_io(), pl)) continue;
+		apply_skins_to(pl, kPortraitPeer, equipped_);
+		apply_worn_locker_accessories(pl, kPortraitPeer);
+		any = true;
+	}
+	if (!any) {
+		clear_overrides(kPortraitPeer);
+		applied_locker_.erase(kPortraitPeer);
+	}
+}
+
+void JVTextureLoader::request_menu_portrait_refresh() {
+	portrait_refresh_t_ = 0.2;
+}
+
+void JVTextureLoader::tick_menu_portrait_refresh(double delta) {
+	if (portrait_refresh_t_ < 0.0) return;
+	portrait_refresh_t_ -= delta;
+	if (portrait_refresh_t_ > 0.0) return;
+	portrait_refresh_t_ = -1.0;
+	fire_menu_portrait_refresh();
+}
+
+void JVTextureLoader::fire_menu_portrait_refresh() {
+	Ref<Script> sc = jvm_textures_io().resource("player.look", "res://game/character/character_portrait.gd");
+	if (sc.is_valid()) {
+		Variant cache = sc->get("_head_cache");
+		if (cache.get_type() == Variant::DICTIONARY) Dictionary(cache).clear();
+	}
+	if (!get_tree()) return;
+	Node *scene = get_tree()->get_current_scene();
+	if (!scene) return;
+	auto reload = [&](const char *avatar, const char *loader) {
+		if (!scene->has_method(loader)) return;
+		Variant av = jvm_textures_io().get("ui.menu", scene, StringName(avatar));
+		if (Node *n = Object::cast_to<Node>(av))
+			jvm_textures_io().call("ui.menu", scene, StringName(loader), n);
+	};
+	reload("_pc_avatar", "_load_card_pfp");
+	reload("_profile_pfp", "_load_profile_pfp");
+}
+
 void JVTextureLoader::refresh_players() {
 	JVM_PROF("textures.players");
 	Node *scene = get_tree()->get_current_scene();
@@ -2201,8 +2253,9 @@ void JVTextureLoader::refresh_players() {
 		}
 	}
 	sync_outfit_bindings();
+	refresh_display_avatars();
 	std::vector<int32_t> gone;
-	for (auto &[peer, ids] : applied_) if (!nodes.count(peer)) gone.push_back(peer);
+	for (auto &[peer, ids] : applied_) if (peer >= 0 && !nodes.count(peer)) gone.push_back(peer);
 	for (int32_t p : gone) clear_overrides(p);
 	const int64_t spawned = int64_t(spawned_nodes_.size());
 	if (spawned != last_status_spawned_) {
@@ -2421,6 +2474,8 @@ void JVTextureLoader::_process(double delta) {
 	{ JVM_PROF("textures.gate_sync"); follow_.sync(this); }
 	if (!follow_.applied) return;
 	{ JVM_PROF("textures.net_tick"); net_tick(delta); }
+	{ JVM_PROF("textures.display_avatars"); refresh_display_avatars(); }
+	tick_menu_portrait_refresh(delta);
 	uint64_t sid = 0;
 	if (SceneTree *tree = get_tree()) {
 		if (Node *scene = tree->get_current_scene()) sid = scene->get_instance_id();

@@ -2099,7 +2099,7 @@ String shown = IO().core("model_get_shown");                     // another libr
 |---|---|---|---|
 | goofy | gameplay | API facades | goofy.* (see GOOFY-API.md) |
 | shots | gameplay | need the class open (revert paths use `undo`) | gate.mode, config.files, scene.*, ball.flight, ball.physics, ball.float, ball.solver, ball.landing_marker, ball.struck, player.input_state, player.input, player.feel |
-| textures (court env / sky, custom ball, locker) | cosmetic | declaration-checked | scene.*, net.state, net.member_data, net.packets, ball.model, ball.physics, ball.skin, player.model, player.look, player.outfit, stage.court_look, stage.net_look, court.env, models.query, ui.locker |
+| textures (court env / sky, custom ball, locker) | cosmetic | declaration-checked | scene.*, net.state, net.member_data, net.packets, ball.model, ball.physics, ball.skin, player.model, player.look, player.outfit, stage.court_look, stage.net_look, court.env, models.query, ui.locker, ui.menu |
 | models (model loader, locker tab) | cosmetic | declaration-checked | scene.*, player.model, player.look, ui.locker, ui.style |
 | loader (unified loader bridge) | follows its subsystems | declaration-checked | scene.stage, packs.query, goofy.packs |
 | core_ui (menu card, picker, mods panel, menu perf) | local UI (core) | declaration-checked | ui.menu, ui.style, ui.notify, ui.mods_panel, menu.perf, stage.picker, stage.pick, ball.pick, ball.skin, packs.*, net.party_ball, lib.* |

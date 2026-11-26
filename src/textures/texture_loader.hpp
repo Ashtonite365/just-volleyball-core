@@ -310,6 +310,8 @@ class JVTextureLoader : public Node {
 	int catalog_total_ = 0;
 	bool accessories_injected_ = false;
 	bool accessories_migrated_ = false;
+	double portrait_refresh_t_ = -1.0;
+	static constexpr int32_t kPortraitPeer = -1001;
 
 	void apply();
 	void revert();
@@ -336,6 +338,10 @@ class JVTextureLoader : public Node {
 	String player_name(int32_t peer);
 	int32_t my_peer();
 	void refresh_players();
+	void refresh_display_avatars();
+	void request_menu_portrait_refresh();
+	void tick_menu_portrait_refresh(double delta);
+	void fire_menu_portrait_refresh();
 	void sync_outfit_bindings();
 	bool player_overrides_intact(int32_t peer) const;
 	void apply_skins_to(Node *player, int32_t peer, const std::vector<jvm::skins::SkinId> &ids);

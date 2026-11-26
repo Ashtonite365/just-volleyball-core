@@ -70,6 +70,18 @@ No custom face pack is shipped in this build: the FACE category is ready, and
 a pack dropped into `mods/resources/packs/` with a `face` block appears there
 the next time the locker opens.
 
+## Main-menu and profile portraits
+
+The small character picture on the main-menu bar and the profile page is not the court
+player. The game renders it with `CharacterPortrait.render` / `head_cached` into a
+private SubViewport (`character_portrait.gd`). That body is dressed with
+`set_character` and captured after a few frames. Skins, locker accessories and custom
+models now apply to that body when its look matches `GameConfig.character` (the same
+rule as a `PresentationCharacter`), using a separate apply slot so the court player's
+overrides are not cleared. After the cosmetic gate turns on, and whenever packs are
+re-applied, the menu reloads those pictures so a portrait captured during the 0.5 s
+gate hysteresis is not left vanilla.
+
 ## Preview honesty
 
 Sheets 01–03 are the iter_06 plump bean in a Godot harness, with outfit tint or accessories applied the same way the loader does at runtime (shader albedo / BoneAttachment3D). Sheets 04–06 are the same bean in a stand-in court built from the pack textures and authored colours — not a capture of the real Just Volleyball court scene.

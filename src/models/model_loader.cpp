@@ -1,4 +1,5 @@
 #include "model_loader.hpp"
+#include "../common/display_avatar.hpp"
 #include "textures/safe_load.hpp"
 #include "../common/jv_prof.hpp"
 #include "model_tab.hpp"
@@ -392,6 +393,7 @@ void JVModelLoader::apply() {
 	load_template();
 	for (auto &r : rigs_) { r.failed = false; r.fail_reason = ""; r.eligible_t = 1e9; }
 	scanned_ = false;
+	_service();
 	call_deferred("_service");
 	notify_status_if_changed();
 }
@@ -449,6 +451,7 @@ void JVModelLoader::_on_model_hook(Object *scene_obj) {
 	Node *scene = Object::cast_to<Node>(scene_obj);
 	if (!scene) return;
 	track(nullptr, scene);
+	_service();
 	call_deferred("_service");
 }
 
@@ -489,22 +492,9 @@ static int32_t my_peer(Node *n) {
 
 
 static bool presentation_is_me(Node *player) {
-	Object *mine = nullptr;
-	if (Node *gc = jvm_models_io().node("player.look", player, "/root/GameConfig")) {
-		Variant c = jvm_models_io().get("player.look", gc, "character");
-		if (c.get_type() == Variant::OBJECT) mine = c.operator Object *();
-	}
-	Variant pv = jvm_models_io().get("player.look", player, "character");
-	Object *theirs = pv.get_type() == Variant::OBJECT ? pv.operator Object *() : nullptr;
-	if (!mine || !theirs) return false;
-	if (mine == theirs) return true;
-	if (!mine->has_method("look_dict") || !theirs->has_method("look_dict")) return false;
-	Variant a = jvm_models_io().call("player.look", mine, "look_dict"), b = jvm_models_io().call("player.look", theirs, "look_dict");
-	if (a.get_type() != Variant::DICTIONARY || b.get_type() != Variant::DICTIONARY) return false;
-	Dictionary da = Dictionary(a).duplicate(), db = Dictionary(b).duplicate();
-	da.erase("h"); db.erase("h");
-	return da.recursive_equal(db, 4);
+	return jvm::display_looks_like_me(jvm_models_io(), player);
 }
+
 
 
 
@@ -530,6 +520,7 @@ bool JVModelLoader::is_eligible(Node *rig) {
 	while (player && !jvm::script_is(player, "Player")) player = player->get_parent();
 	if (!player) return true;
 	if (is_locker_preview(player)) return true;
+	if (jvm::is_character_portrait_player(player)) return presentation_is_me(player);
 
 	Dictionary cfg;
 	Variant sc = jvm::load_json(jvm::install_dir().path_join("texture_sync.json"));
@@ -1384,11 +1375,14 @@ void JVModelLoader::_service() {
 		}
 		Node *rig = rig_of(r);
 		if (!rig || !scene->is_inside_tree()) { i++; continue; }
-		if (r.eligible_t >= 0.5) {
+		Node *elig_player = rig->get_parent();
+		while (elig_player && !jvm::script_is(elig_player, "Player")) elig_player = elig_player->get_parent();
+		const bool portrait = jvm::is_character_portrait_player(elig_player);
+		if (r.eligible_t >= 0.5 || portrait) {
 			r.reflection = is_reflection_rig(rig);
 			r.eligible = !r.reflection && is_eligible(rig);
 			r.remote_want = (ready && r.eligible) || r.reflection || remote_models_.empty() ? std::nullopt : remote_for(rig);
-			r.eligible_t = 0;
+			r.eligible_t = portrait ? 0.5 : 0;
 		}
 		const bool local = ready && r.eligible && !r.failed;
 
