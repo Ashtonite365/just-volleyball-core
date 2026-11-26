@@ -1,6 +1,0 @@
-{
-  "_comment": "Where the texture library finds players (recovered scripts: main.gd:497 _peer_players = {peer_id: Player}; net.gd players = {peer_id: {name, sid}}).",
-  "players_property": "_peer_players",
-  "local_player_property": "player",
-  "net": "/root/Net"
-}

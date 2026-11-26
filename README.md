@@ -18,7 +18,7 @@ Related repositories: [mods](https://github.com/Ashtonite365/just-volleyball-mod
 
 
 Four C++ GDExtension libraries (the texture and model loaders are merged into jvm_loader) (godot-cpp `godot-4.5-stable`, loads in Godot 4.5+;
-the game is Godot 4.7.1 custom build + GodotSteam). Mods are pinned to the game's version string (currently approved: 1.0.4.2); Steam build id and pck hash are recorded as info only (docs/LOADING.md).
+the game is Godot 4.7.1 custom build + GodotSteam). Mods are pinned to the game's version string (currently approved: 1.0.4.2 and 1.0.4.3); Steam build id and pck hash are recorded as info only (docs/LOADING.md).
 
 | library | class | tier | status |
 |---|---|---|---|
