@@ -7,7 +7,7 @@ When the game or a library changes, CORE is updated in one place and mods keep w
 
 This file is the function reference for CORE. It lists every API function: its signature,
 what it does, its parameters and return value, the capability id it requires, and an
-example of how to call it. For the Goofy library's own contract, see [GOOFY-API.md](GOOFY-API.md).
+example of how to call it. For the Goofy library's own contract, see [GOOFY-API.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-API.md).
 
 **This is an unofficial fan project.** It is not affiliated with, endorsed by, or supported
 by the developers of Just Volleyball. The API is runtime-only: it does not edit the game's
@@ -682,7 +682,7 @@ Translation to the unified loader's texture subsystem.
 ### `content_status(mod: String)` → Dictionary {sharing, repo, auto_download, offer, peers, catalog, downloads, downloaded, rejected, offers_sent, offers_received, shown_ball, shown_stage, cached}
 
 - **Since** 1.2 · **capability** `net.content_offer` · **access** `sync` · **scope** sent to modded peers
-- **Does / side effects:** Cosmetic sharing state: what this player advertises, what every modded peer wears (per item: have / downloading / installed / hash mismatch / ...), the assets-repo catalog and downloads (docs/CONTENT-SHARING.md). Readable in any mode; sharing itself runs only in LAN / private / friends.
+- **Does / side effects:** Cosmetic sharing state: what this player advertises, what every modded peer wears (per item: have / downloading / installed / hash mismatch / ...), the assets-repo catalog and downloads (https://github.com/Ashtonite365/just-volleyball-mods/blob/main/loader/docs/CONTENT-SHARING.md). Readable in any mode; sharing itself runs only in LAN / private / friends.
 - **Multiplayer:** Talks to other modded players. Open ONLY in LAN / private / friends-only lobbies.
 - **Example:** `api.content_status("my_mod").peers`
 
@@ -1041,7 +1041,7 @@ Lazy access to the game's own sound effects and ambience tracks through the unif
 
 ## Goofy ball (all 156 params)
 
-Translation to the Goofy API (docs/GOOFY-API.md). The 156-param ball-library schema (BallPhysics x124, PlayerFeel x27, Goofy flight extras x5) is also compiled into core (src/gate/goofy_params.inc), so discovery works without Goofy. Mod layers have owner `mod:<name>`; precedence stock < user config (100) < court pack (200) < mods (default 500, 0..899) < FIXED.
+Translation to the Goofy API (https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-API.md). The 156-param ball-library schema (BallPhysics x124, PlayerFeel x27, Goofy flight extras x5) is also compiled into core (src/gate/goofy_params.inc), so discovery works without Goofy. Mod layers have owner `mod:<name>`; precedence stock < user config (100) < court pack (200) < mods (default 500, 0..899) < FIXED.
 
 ### `goofy_available(mod: String)` → bool
 
@@ -1210,7 +1210,7 @@ The 34 gameplay values hard-coded in game/player/player.gd (docs/PLAYER-CONSTS.m
 
 ## Goofy ball + player libraries, host sync (1.2)
 
-Goofy API 1.2 (docs/GOOFY-BALL.md, docs/GOOFY-PLAYER.md, docs/GOOFY-SYNC.md). Ball and player indices are positions in `goofy_balls()` / `goofy_players()` (= `find_balls` / `find_players` order) at the time of the call. Live state reads are read-only and safe everywhere; writes need an offline mode. In LAN / private / friends lobbies the HOST's effective params are used by every modded player (clients ignore their own layers until they leave); public lobbies never sync and never apply Goofy physics.
+Goofy API 1.2 (https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-BALL.md, https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-PLAYER.md, https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-SYNC.md). Ball and player indices are positions in `goofy_balls()` / `goofy_players()` (= `find_balls` / `find_players` order) at the time of the call. Live state reads are read-only and safe everywhere; writes need an offline mode. In LAN / private / friends lobbies the HOST's effective params are used by every modded player (clients ignore their own layers until they leave); public lobbies never sync and never apply Goofy physics.
 
 ### `goofy_ball_schema(mod: String)` → Array[Dictionary]
 
@@ -1305,7 +1305,7 @@ Goofy API 1.2 (docs/GOOFY-BALL.md, docs/GOOFY-PLAYER.md, docs/GOOFY-SYNC.md). Ba
 
 ## Gameplay settings registry and game rules (1.3)
 
-The translation layer for settings that change play (docs/GAMEPLAY-SETTINGS.md, docs/GOOFY-RULES.md). A mod registers its settings once during its config setup; the core persists them per mod (`mods/api/state/gameplay/<mod>.json`, versioned), builds their controls in the game's Settings panel (`mods` tab) and answers every read through `gameplay_get`: stock while gameplay is closed (public lobbies / quick match), the host's value for clients in LAN / private / friends lobbies (stock until the host's values arrive), else the local value. Values are always validated and clamped. Visual-only settings are refused: cosmetics stay per-player.
+The translation layer for settings that change play (docs/GAMEPLAY-SETTINGS.md, https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-RULES.md). A mod registers its settings once during its config setup; the core persists them per mod (`mods/api/state/gameplay/<mod>.json`, versioned), builds their controls in the game's Settings panel (`mods` tab) and answers every read through `gameplay_get`: stock while gameplay is closed (public lobbies / quick match), the host's value for clients in LAN / private / friends lobbies (stock until the host's values arrive), else the local value. Values are always validated and clamped. Visual-only settings are refused: cosmetics stay per-player.
 
 ### `gameplay_register(mod: String, defs: Array[Dictionary], options: Dictionary {version, migrate, on_change})` → Dictionary {ok, registered, errors, version, migrated_from, loaded, role}
 
@@ -1967,7 +1967,7 @@ JVModAPI exposes no settable properties: every state change goes through a check
 | `mods/core/00-default.json` `menu_perf` | bool | true | Menu perf default (cheaper menu motion, same look). `menu_perf_set` changes it for the session. |
 | `mods/<category>/*.json` | JSON | per library | Library configs (shots, goofy, textures ...), read by `load_config` / `library_reload`, validated by `config_validate`. |
 | stage pack `skin.json` `audio{}` | JSON | - | Optional native ambience for a court (`ambience` = native id/path/alias such as `beach`, plus optional `bus` / `volume`). Parsed only; the stream is loaded when the pack is applied. See docs/PICKERS.md. |
-| stage pack `skin.json` `environment{}` / `sky{}` / `court{}` / `goofy{}` | JSON | - | Court environment GLB, distant sky, court look and the map's goofy block (see docs/PICKERS.md, docs/UNIFIED-LOADER.md). Read via `court_env_info`, `loader_map_goofy_block`. |
+| stage pack `skin.json` `environment{}` / `sky{}` / `court{}` / `goofy{}` | JSON | - | Court environment GLB, distant sky, court look and the map's goofy block (see docs/PICKERS.md, [UNIFIED-LOADER.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/loader/docs/UNIFIED-LOADER.md)). Read via `court_env_info`, `loader_map_goofy_block`. |
 
 ## Capabilities
 
@@ -2097,7 +2097,7 @@ String shown = IO().core("model_get_shown");                     // another libr
 
 | library | access class (on/off) | game IO writes | declared capabilities |
 |---|---|---|---|
-| goofy | gameplay | API facades | goofy.* (see GOOFY-API.md) |
+| goofy | gameplay | API facades | goofy.* (see [GOOFY-API.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-API.md)) |
 | shots | gameplay | need the class open (revert paths use `undo`) | gate.mode, config.files, scene.*, ball.flight, ball.physics, ball.float, ball.solver, ball.landing_marker, ball.struck, player.input_state, player.input, player.feel |
 | textures (court env / sky, custom ball, locker) | cosmetic | declaration-checked | scene.*, net.state, net.member_data, net.packets, ball.model, ball.physics, ball.skin, player.model, player.look, player.outfit, stage.court_look, stage.net_look, court.env, models.query, ui.locker, ui.menu |
 | models (model loader, locker tab) | cosmetic | declaration-checked | scene.*, player.model, player.look, ui.locker, ui.style |
@@ -2109,7 +2109,7 @@ Refusals are logged once per mod and capability (`refused <mod> -> <cap>: <why>`
 ## Decisions
 
 * `engine.time_scale` (time_scale_set / time_scale_restore) stays a gameplay-class, local Engine.time_scale write for mods. In LAN / private / friends **matches** the time scale follows the **host** (owner decision): Goofy host sync sends the host's time scale with all gameplay params at match start, each client applies it through `time_scale_set`, re-asserts it after the game's own hit-stop slow-mo, and restores its own value at match end or when the host leaves. Public lobbies: local only, nothing sent.
-* Everything that alters the ball or a player follows the host in a synced match unless it is visual-only; the per-param classification (`sync`: host / local) is in `goofy_ball_schema` / `goofy_player_schema` and docs/GOOFY-BALL.md, GOOFY-PLAYER.md. Visual-only params and cosmetics stay each player's own.
-* Cosmetics are per player and never host-synced: each modded peer advertises what it wears (id + SHA-256 + size, JVMS packets) on join and on every change, everyone renders everyone's outfit, accessories and model; the court and ball everyone plays on are the host's pick. Missing items come only from the embedded assets repo (docs/CONTENT-SHARING.md). Sharing is LAN / private / friends only; public lobbies stay local (no packets, no downloads).
+* Everything that alters the ball or a player follows the host in a synced match unless it is visual-only; the per-param classification (`sync`: host / local) is in `goofy_ball_schema` / `goofy_player_schema` and https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-BALL.md, [GOOFY-PLAYER.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-PLAYER.md). Visual-only params and cosmetics stay each player's own.
+* Cosmetics are per player and never host-synced: each modded peer advertises what it wears (id + SHA-256 + size, JVMS packets) on join and on every change, everyone renders everyone's outfit, accessories and model; the court and ball everyone plays on are the host's pick. Missing items come only from the embedded assets repo (https://github.com/Ashtonite365/just-volleyball-mods/blob/main/loader/docs/CONTENT-SHARING.md). Sharing is LAN / private / friends only; public lobbies stay local (no packets, no downloads).
 * There is no separate space-platform gravity or underwater drag in the game or Goofy; ball / player gravity and drag are ordinary gameplay params and follow the host.
 

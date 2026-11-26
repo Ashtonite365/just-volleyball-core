@@ -25,11 +25,11 @@ the game folder (the folder that contains volleyball.exe)/
     bootstrap.gd              loads the extensions, spawns nodes
     pins.json                 approved game versions
     gate_probes.json          how the gate reads lobby state
-    texture_sync.json         texture sync settings
+    texture_sync.json         texture sync settings (from the loader / assets samples)
     Watch-JvModStatus.ps1     live status viewer
     README.txt
-    bin/*.gdextension + *.dll the five libraries
-    resources/packs/ models/ shots/ goofy/   your mod content
+    bin/*.gdextension + *.dll jvm_core, plus loader / goofy / shots from just-volleyball-mods
+    resources/packs/ shots/ goofy/   your mod content
 ```
 1. Godot reads `override.cfg` beside the exe at startup.
    * Godot 4.6+: `[autoload_prepend]` (godot PR #113078) — bootstrap runs first.

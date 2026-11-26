@@ -20,7 +20,7 @@ Every value is validated and clamped on the way in and on the way out. Visual-on
 
 Capabilities: `gameplay.settings` (register, read, set; access gameplay, host scope),
 `gameplay.settings_sync` (the host-sync hooks, mod lists and the match decision; access sync) and `game.rules`
-(the rally rules, see [GOOFY-RULES.md](GOOFY-RULES.md)). Function reference:
+(the rally rules, see [GOOFY-RULES.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/goofy/docs/GOOFY-RULES.md)). Function reference:
 [CORE-API.md](CORE-API.md).
 
 ## Registering a setting
@@ -249,7 +249,7 @@ Goofy's settings schema is 2; `mod_version` stays `1` so a peer still on schema 
 | `goofy.rules.max_consecutive_touches` | int | 1 | 1 .. 10 | new |
 | `goofy.rules.max_team_touches` | int | 3 | 1 .. 10 | `max_hits_per_team` (0 = 3) |
 | `goofy.rules.block_classic` | bool | off | | `PlayerFeel.block_classic` |
-| `goofy.topspin_spike_boost` | float | 1.12 | 1 .. 1.3 | new (v1.0.4): x speed of a topspin SPIKE made in the air with forward held; read by the shots library (see SHOTS.md) |
+| `goofy.topspin_spike_boost` | float | 1.12 | 1 .. 1.3 | new (v1.0.4): x speed of a topspin SPIKE made in the air with forward held; read by the shots library (see [SHOTS.md](https://github.com/Ashtonite365/just-volleyball-mods/blob/main/shots/docs/SHOTS.md)) |
 
 Old config files keep working. On the first run the migration (schema 0 to 1) imports those
 keys from `mods/goofy/*.json` (`{"mul": x}` forms are resolved against stock); schema 2 then

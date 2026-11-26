@@ -1,17 +1,17 @@
 jv-mods install folder (next to volleyball.exe). Everything jv-mods needs lives here;
 the only file outside it is override.cfg next to volleyball.exe.
 Framework files (don't edit):
-  bin/                 the six DLLs + .gdextension files
+  bin/                 jvm_core, plus any other installed libraries (.dll + .gdextension)
   bootstrap.gd         loader started by override.cfg
   pins.json            approved game versions (GameConfig.VERSION; mods refuse to load on any other version)
   gate_probes.json     how the gate reads the lobby type
-  texture_sync.json    texture ID sync settings
+  texture_sync.json    texture ID sync settings (optional; comes with the loader)
   Watch-JvModStatus.ps1  live status viewer (PowerShell)
 Your mod content (each folder is scanned at runtime - add or delete folders freely):
   resources/packs/<pack>/skin.json   resource packs (outfits, hats, back accessories, ball, net, court)
                                      {"id": "A1F3", "name": "My skin", "kind": "skin"|"global"}; see resources/packs/README.txt
   resources/packs/equipped.json      {"equipped": ["A1F3"]}  skins you wear (synced as IDs)
-  models/<model>/skin.json           full player models {"kind": "model", "id": "BEA0", "model": "my.glb"}; see models/README.txt
+  resources/packs/<model>/skin.json  full player models {"kind": "model", "id": "BEA0", "model": "my.glb"} (legacy mods/models/ is still read)
   models/equipped.json               {"model": "BEA0"}  the model you wear (local only; locker FULL MODEL tab)
   shots/*.json     extra shots on the game's own controls (see 00-default.json):
                    in the air on a rally touch: forward = topspin (exact landing marker), back = Float
