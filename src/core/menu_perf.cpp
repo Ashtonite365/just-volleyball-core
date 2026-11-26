@@ -107,13 +107,46 @@ void JVMenuPerf::_process(double delta) {
 	(void)delta;
 }
 
+// The top/bottom accent strips are siblings of the menu panels, not children, so
+// _set_menu_chrome / _enter_freeplay hide them only by writing _top_strip.visible
+// and _bottom_strip.visible. ui_cancel on the home page is handled in _process
+// (_menu_nav -> _menu_cancel -> _try_freeplay) after this pre_tick. Nulling those
+// properties to skip _place_strips made that hide a no-op: Escape in free play,
+// Escape again to the main menu, Escape once more to return to the game left the
+// orange menu lines on screen (every court). Never steal the strip refs.
+static bool menu_gameplay_open(Node *m) {
+	return bool(jvm_core_ui_io().get("menu.perf", m, "_freeplay"))
+		|| bool(jvm_core_ui_io().get("menu.perf", m, "_practice_on"));
+}
+
+static void hide_ctrl(const Variant &v) {
+	if (Control *c = Object::cast_to<Control>(obj(v))) c->set_visible(false);
+}
+
+static void hide_menu_chrome(Node *m, const Variant &saved_top, const Variant &saved_bot) {
+	auto hide_prop = [&](const char *name, const Variant &fallback = Variant()) {
+		Variant v = jvm_core_ui_io().get("menu.perf", m, name);
+		if (!obj(v)) v = fallback;
+		hide_ctrl(v);
+	};
+	hide_prop("_root");
+	hide_prop("_top_panel");
+	hide_prop("_bottom_panel");
+	hide_prop("_top_strip", saved_top);
+	hide_prop("_bottom_strip", saved_bot);
+	hide_prop("_logo_rect");
+	hide_prop("_pc_avatar");
+	hide_prop("_friends_panel");
+	hide_prop("_friends_scrim");
+}
+
 void JVMenuPerf::pre_tick() {
 	if (!enabled_) return;
 	Node *m = menu();
 	if (!m) return;
 	frames_++;
 
-	if (bool(jvm_core_ui_io().get("menu.perf", m, "_freeplay"))) { stole_tilt_ = stole_strips_ = false; return; }
+	if (menu_gameplay_open(m)) { stole_tilt_ = stole_strips_ = false; return; }
 	if (m->has_method("_modal_up") && bool(jvm_core_ui_io().call("menu.perf", m, "_modal_up"))) { stole_tilt_ = stole_strips_ = false; return; }
 
 	saved_tilt_ = jvm_core_ui_io().get("menu.perf", m, "_tilt");
@@ -121,26 +154,8 @@ void JVMenuPerf::pre_tick() {
 	jvm_core_ui_io().set("menu.perf", m, "_tilt", Array());
 	jvm_core_ui_io().set("menu.perf", m, "_lean", Array());
 	stole_tilt_ = true;
-
-
-
-	Control *top_p = Object::cast_to<Control>(obj(jvm_core_ui_io().get("menu.perf", m, "_top_panel")));
-	Control *bot_p = Object::cast_to<Control>(obj(jvm_core_ui_io().get("menu.perf", m, "_bottom_panel")));
-	int top_h = top_p ? int(std::lround(top_p->get_size().y)) : -1;
-	int bot_h = bot_p ? int(std::lround(bot_p->get_size().y)) : -1;
-	if (top_h == last_top_h_ && bot_h == last_bottom_h_ && last_top_h_ >= 0) {
-		saved_top_strip_ = jvm_core_ui_io().get("menu.perf", m, "_top_strip");
-		saved_bottom_strip_ = jvm_core_ui_io().get("menu.perf", m, "_bottom_strip");
-		jvm_core_ui_io().set("menu.perf", m, "_top_strip", Variant());
-		jvm_core_ui_io().set("menu.perf", m, "_bottom_strip", Variant());
-		stole_strips_ = true;
-		strip_skipped_++;
-	} else {
-		stole_strips_ = false;
-		last_top_h_ = top_h;
-		last_bottom_h_ = bot_h;
-		strip_writes_++;
-	}
+	stole_strips_ = false;
+	strip_writes_++;
 }
 
 void JVMenuPerf::post_tick(double delta) {
@@ -160,6 +175,9 @@ void JVMenuPerf::post_tick(double delta) {
 		jvm_core_ui_io().set("menu.perf", m, "_bottom_strip", saved_bottom_strip_);
 		stole_strips_ = false;
 	}
+	// Hide after _process so the Escape-back-to-game path cannot leave decor up,
+	// even if a hide ran against a null strip ref earlier in the frame.
+	if (menu_gameplay_open(m)) hide_menu_chrome(m, saved_top_strip_, saved_bottom_strip_);
 }
 
 
