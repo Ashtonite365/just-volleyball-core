@@ -2,6 +2,16 @@
 
 Unofficial fan-made core / loader and CORE API for Just Volleyball.
 
+## Install
+
+1. Download **[JustVolleyballModSetup.exe](https://github.com/Ashtonite365/just-volleyball-core/releases/latest/download/JustVolleyballModSetup.exe)** (also in [`installer/`](installer/)).
+2. Check its SHA-256 matches [`JustVolleyballModSetup.exe.sha256`](installer/JustVolleyballModSetup.exe.sha256). In PowerShell: `Get-FileHash .\JustVolleyballModSetup.exe -Algorithm SHA256`
+3. Close Just Volleyball. Setup won't install while the game is running.
+4. Run the setup. It finds the game on its own, or click **Browse** and pick `volleyball.exe`.
+5. Click **Install all**, or choose **Update mods** / **Update textures** and tick what you want.
+
+Setup backs up everything it replaces and checks every file's SHA-256. **Uninstall mods** / **Uninstall textures** put back exactly what was there before. The game's exe and `.pck` are never changed. Windows may warn that the file isn't recognised because it isn't code-signed: click **More info**, then **Run anyway**.
+
 **This is an unofficial fan project.** It is not affiliated with, endorsed by, or supported by the developers of Just Volleyball. Everything published here is original work. Do not open issues with the official game team about this mod, and do not add game files (the executable, `.pck`, or any extracted official assets) to this repository. The loader is runtime-only: it does not edit the game's executable or `.pck`.
 
 Related repositories: [mods](https://github.com/Ashtonite365/just-volleyball-mods) · [textures and models](https://github.com/Ashtonite365/just-volleyball-assets)
@@ -28,7 +38,7 @@ Gameplay settings (CORE 1.3: mods register settings that change play; they appea
 - watch it with `mods\Watch-JvModStatus.ps1` (repo: `tools/`); F8 in game toggles the overlay; F7 toggles the custom shot debugger (docs/SHOTS.md).
 Log: `%APPDATA%\Godot\app_userdata\volleyball\jv_mods\jv_mods.log`.
 
-## Install
+## Manual install
 Layout next to `volleyball.exe` - one folder plus one file:
 ```
 override.cfg
