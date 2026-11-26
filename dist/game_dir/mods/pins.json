@@ -1,6 +1,9 @@
 {
   "_comment": "Approved game versions. All mod libraries (textures included) refuse to load unless GameConfig.VERSION (the title/menu \"v%s\" label) is in `versions` or a pin's `version`. Steam buildid and pck/exe hashes are recorded in logs and status only. Old pins.json files with no version field still match by pck hash/size. Hashes are lowercase SHA256.",
-  "versions": ["1.0.4.2"],
+  "versions": [
+    "1.0.4.2",
+    "1.0.4.3"
+  ],
   "pins": [
     {
       "name": "steam-26924091",
@@ -21,6 +24,17 @@
       "engine": "4.7.1-stable (custom_build)",
       "pck_size": 171181276,
       "pck_sha256": "5393cffeb8b0a8b8dba47ff586ec7ede07f33ed5345f6b42c12cebe32ee287c0",
+      "exe_size": 85303808,
+      "exe_sha256": "224a5ea56536081b84369a0e90590a688a8510fefcc24ab84af1a31b3e052435"
+    },
+    {
+      "name": "steam-26937150",
+      "version": "1.0.4.3",
+      "_note": "v1.0.4.3 (26 Nov 2026 patch; exe unchanged, same 4.7.1-stable custom_build). GameConfig.VERSION is 1.0.4.3. Net.PROTO 80 to 81. Party-disband and queue UI changes in game/net/quick_play.gdc, game/ui/matchmaking_pill.gdc and game/ui/menu.gdc. Autoloads, project.binary, scene paths and gate probes unchanged. awards_page.gdc unchanged from 26929702.",
+      "steam_buildid": "26937150",
+      "engine": "4.7.1-stable (custom_build)",
+      "pck_size": 171181436,
+      "pck_sha256": "f72ea5884cfab90be24ba35e83693325e1e0f75d4d767de53a627f5f6f68d583",
       "exe_size": 85303808,
       "exe_sha256": "224a5ea56536081b84369a0e90590a688a8510fefcc24ab84af1a31b3e052435"
     }
