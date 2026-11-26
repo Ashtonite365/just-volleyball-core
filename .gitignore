@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 thirdparty/godot-cpp/
 out/
+
+tests/
